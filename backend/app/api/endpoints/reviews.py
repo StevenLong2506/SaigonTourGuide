@@ -1,16 +1,12 @@
 from datetime import date
 
-from fastapi import APIRouter, HTTPException, status, Depends, Form, UploadFile, File, Query
+from fastapi import APIRouter, status, Depends, Form, UploadFile, File, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user
-from app.api.helpers import get_place_or_404, get_review_or_404, get_own_review_or_403
 from app.models import User
-from app.models.enums import ReviewStatus
-from app.repository.place_repository import PlaceRepository
-from app.repository.review_repository import ReviewRepository
-from app.schemas.review import ReviewResponse, ReviewCreate, ReviewUpdate
-from app.service.upload_image_service import upload_review_images
+from app.schemas.review import ReviewResponse, ReviewUpdate
+from app.service.review_service import ReviewService
 
 router = APIRouter()
 
@@ -23,39 +19,27 @@ def create_review(place_id: int = Form(...), rating: int = Form(..., ge=1, le=5)
                   files: list[UploadFile] = File(default=[]),
                   user: User = Depends(get_current_user),
                   db: Session = Depends(get_db)):
-    get_place_or_404(repo=PlaceRepository(db), place_id=place_id)
-    review_repo = ReviewRepository(db)
-    if review_repo.get_by_place_and_user(place_id=place_id, user_id=user.id):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Bạn đã đánh giá địa điểm này')
-
-    imgs = upload_review_images(files=files, place_id=place_id) if files else []
-    payload = ReviewCreate(rating=rating, title=title, content=content, visit_date=visit_date, images=imgs)
-
-    return review_repo.create_review(payload=payload, place_id=place_id, user_id=user.id)
+    return ReviewService(db).create(place_id=place_id, rating=rating, title=title, content=content,
+                                    visit_date=visit_date, files=files, user_id=user.id)
 
 
 @router.get('/place/{place_id}', response_model=list[ReviewResponse])
 def list_reviews_by_place(place_id: int, skip: int = 0, limit: int = Query(default=20, le=100),
                           db: Session = Depends(get_db)):
-    get_place_or_404(repo=PlaceRepository(db), place_id=place_id)
-    return ReviewRepository(db).list_full(skip=skip, limit=limit, status=ReviewStatus.APPROVED, place_id=place_id)
+    return ReviewService(db).list_by_place(place_id, skip=skip, limit=limit)
 
 
 @router.get('/{review_id}', response_model=ReviewResponse)
 def get_review(review_id: int, db: Session = Depends(get_db)):
-    return get_review_or_404(repo=ReviewRepository(db), review_id=review_id)
+    return ReviewService(db).get(review_id)
 
 
 @router.patch('/{review_id}', response_model=ReviewResponse)
 def update_review(review_id: int, payload: ReviewUpdate, user: User = Depends(get_current_user),
                   db: Session = Depends(get_db)):
-   repo = ReviewRepository(db)
-   review = get_own_review_or_403(repo=repo, review_id=review_id, user=user)
-   return repo.update_review(review=review, payload=payload)
+    return ReviewService(db).update_own(review_id, payload, user)
 
 
 @router.delete('/{review_id}', status_code=status.HTTP_204_NO_CONTENT)
-def delete_review(review_id: int, user: User = Depends(get_current_user), db: Session=Depends(get_db)):
-    repo = ReviewRepository(db)
-    review = get_own_review_or_403(repo=repo, review_id=review_id, user=user)
-    repo.delete_review(review=review)
+def delete_review(review_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ReviewService(db).delete_own(review_id, user)

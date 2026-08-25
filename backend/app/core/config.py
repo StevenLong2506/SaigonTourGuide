@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     CLOUDINARY_CLOUD_NAME: str
     CLOUDINARY_API_KEY: str
     CLOUDINARY_API_SECRET: str
+    EMBEDDING_MODEL: str
+    EMBEDDING_DIM: int
+    GEMINI_API_KEY: str
+    CHAT_MODEL: str
+    RAG_TOP_K: int
     @property
     def cors_origins(self)->list[str]:
         return [o.strip() for o in self.BACKEND_CORS_ORIGINS.split(',') if o.strip()]

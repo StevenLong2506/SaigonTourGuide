@@ -71,7 +71,7 @@ class StatRepository(BaseRepository[DailyStat]):
         return {
             'id': place.id,
             'name': place.name,
-            'district': place.district,
+            'ward': place.ward,
             'total_views':place.total_views,
             'total_reviews':place.total_reviews,
             'average_rating': float(place.average_rating),

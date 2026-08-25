@@ -13,7 +13,7 @@ class ReviewEmbedding(Base):
     review_id = Column(Integer, ForeignKey('review.id', ondelete='CASCADE'), nullable=False)
     chunk_text = Column(Text, nullable=False)
     chunk_index = Column(Integer, nullable=False, server_default="0")
-    embedding = Column(VECTOR, nullable=False)
+    embedding = Column(VECTOR(768), nullable=False)
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
 
     __table_args__ = (

@@ -105,6 +105,10 @@ class UserRepository(BaseRepository[User]):
 
     def update_avatar(self, user: User, url: str) -> User:
         user.avatar=url
-        self.db.commit()
-        self.db.refresh(user)
-        return self.get_full(user.id)
+        u = self.update(user)
+        return self.get_full(u.id)
+
+    def set_active(self, user:User, is_active:bool):
+        user.is_active=is_active
+        u = self.update(user)
+        return self.get_full(u.id)

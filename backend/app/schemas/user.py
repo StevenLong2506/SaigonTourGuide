@@ -17,6 +17,7 @@ class UserTravelProfileBase(BaseModel):
 class UserTravelProfileUpdate(UserTravelProfileBase):
     pass
 
+
 class UserTravelProfileResponse(UserTravelProfileBase):
     updated_at: datetime
 
@@ -28,16 +29,19 @@ class UserInterestBase(BaseModel):
     tag_id: int
     priority: int = Field(default=1, ge=1, le=3)
 
+
 class UserInterestCreate(UserInterestBase):
     pass
+
 
 class UserInterestsUpdate(BaseModel):
     interests: list[UserInterestCreate]
 
+
 class UserInterestResponse(BaseModel):
     priority: int
     tag: InterestTagResponse
-    
+
     class Config:
         from_attributes = True
 
@@ -82,6 +86,11 @@ class UserResponse(UserBase):
     created_at: datetime
     travel_profile: UserTravelProfileResponse | None = None
     interests: list[UserInterestResponse] = []
+    is_active: bool
 
     class Config:
         from_attributes = True
+
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool

@@ -18,6 +18,8 @@ class InterestTagUpdate(BaseModel):
 class InterestTagResponse(InterestTagBase):
     id: int
     created_at: datetime
+    place_count: int = 0
+    user_count: int = 0
 
     class Config:
         from_attributes = True

@@ -56,10 +56,9 @@ class PlaceBase(BaseModel):
     name: str
     description: str
     address: str
-    district: str
     ward: str
     link_google_map: str
-    phone: str = Field(min_length=10)
+    phone: str | None = None
     website: str | None = None
     price_min: Decimal = Decimal("0")
     price_max: Decimal = Decimal("0")
@@ -81,7 +80,6 @@ class PlaceUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     address: str | None = None
-    district: str | None = None
     ward: str | None = None
     link_google_map: str | None = None
     phone: str | None = Field(default=None, min_length=10)
@@ -129,13 +127,16 @@ class PlaceFeaturedUpdate(BaseModel):
 class PlaceSummaryResponse(BaseModel):
     id: int
     name: str
-    district: str
+    address: str
+    ward: str
     average_rating: Decimal
     total_reviews: int
     total_views: int
     is_featured: bool
     status: PlaceStatus
     primary_image: str | None = None
+    opening_time: time
+    closing_time: time
 
     class Config:
         from_attributes = True
@@ -149,6 +150,6 @@ class PlaceSearchResponse(BaseModel):
     items: list[PlaceSummaryResponse] = []
 
 
-class DistrictCountResponse(BaseModel):
-    district: str
+class WardCountResponse(BaseModel):
+    ward: str
     total: int
