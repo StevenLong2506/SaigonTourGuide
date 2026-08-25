@@ -2,6 +2,8 @@ from datetime import time, datetime, date
 
 from pydantic import BaseModel
 
+from app.schemas.place import PlaceSummaryResponse
+
 
 class ItineraryItemBase(BaseModel):
     place_id: int | None = None
@@ -20,12 +22,10 @@ class ItineraryItemCreate(ItineraryItemBase):
 class ItineraryItemResponse(ItineraryItemBase):
     id: int
     created_at: datetime
+    place: PlaceSummaryResponse | None = None
 
     class Config:
         from_attributes = True
-
-
-# ================================================================================================
 
 
 class ItineraryBase(BaseModel):
@@ -60,3 +60,16 @@ class ItineraryResponse(ItineraryBase):
 
     class Config:
         from_attributes = True
+
+
+class ItineraryShareResponse(BaseModel):
+    share_code: str
+    share_url: str
+
+
+class TripRequestCreate(BaseModel):
+    raw_query: str
+    duration_day: int = 1
+    num_people: int | None = None
+    ward: str | None = None
+    max_price: int | None = None

@@ -14,3 +14,8 @@ class SearchLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class KeywordStatResponse(BaseModel):
+    keyword:str
+    count:int

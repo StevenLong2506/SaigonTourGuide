@@ -24,15 +24,21 @@ class PlaceRepository(BaseRepository[Place]):
     def get_full(self, place_id: int) -> Place | None:
         return self.query_full().filter_by(id=place_id).first()
 
-    def list_full(self, skip: int = 0, limit: int = 100, status: PlaceStatus | None = None,
-                  district: str | None = None, is_featured: bool | None = None) -> list[Place]:
+    def list_full(self, skip: int = 0, limit: int = 100, category_id: int | None = None,
+                  status: PlaceStatus | None = None, ward: str | None = None, is_featured: bool | None = None):
         q = self.query_full()
         if status is not None:
             q = q.filter_by(status=status)
-        if district is not None:
-            q = q.filter_by(district=district)
+        if ward is not None:
+            q = q.filter_by(ward=ward)
         if is_featured is not None:
             q = q.filter_by(is_featured=is_featured)
+        if category_id is not None:
+            q = q.filter(
+                select(PlaceCategory.place_id)
+                .where(and_(PlaceCategory.place_id == Place.id), PlaceCategory.category_id == category_id)
+                .exists()
+            )
 
         return q.order_by(Place.created_at.desc()).offset(skip).limit(limit).all()
 
@@ -105,7 +111,6 @@ class PlaceRepository(BaseRepository[Place]):
             name=payload.name,
             description=payload.description,
             address=payload.address,
-            district=payload.district,
             ward=payload.ward,
             link_google_map=payload.link_google_map,
             phone=payload.phone,
@@ -139,6 +144,61 @@ class PlaceRepository(BaseRepository[Place]):
         self.db.commit()
         return self.get_full(new_place.id)
 
+    def _sync_categories(self, place: Place, category_ids: list[int]):
+        new_ids = self.check_cates(cate_ids=category_ids)
+        old_ids = {pc.category_id for pc in place.categories}
+        to_remove = old_ids - new_ids
+        to_add = new_ids - old_ids
+
+        if to_remove:
+            self.db.query(PlaceCategory).filter(
+                PlaceCategory.place_id == place.id,
+                PlaceCategory.category_id.in_(to_remove),
+            ).delete(synchronize_session="evaluate")
+
+        for cate_id in to_add:
+            self.db.add(PlaceCategory(place_id=place.id, category_id=cate_id))
+
+    def _sync_tags(self, place: Place, tags: list[PlaceTagCreate]):
+        new_tags = self.check_tags(tags=tags)
+        old_tags = {pt.tag_id: pt for pt in place.tags}
+        to_remove = set(old_tags) - set(new_tags)
+        to_add = set(new_tags) - set(old_tags)
+        to_keep = set(new_tags) & set(old_tags)
+
+        if to_remove:
+            self.db.query(PlaceTag).filter(
+                PlaceTag.place_id == place.id,
+                PlaceTag.tag_id.in_(to_remove),
+            ).delete(synchronize_session="evaluate")
+
+        for tag_id in to_add:
+            self.db.add(PlaceTag(place_id=place.id, tag_id=tag_id, relevance=new_tags[tag_id]))
+
+        for tag_id in to_keep:
+            if old_tags[tag_id].relevance != new_tags[tag_id]:
+                old_tags[tag_id].relevance = new_tags[tag_id]
+
+    def _sync_age_groups(self, place: Place, age_groups: list[PlaceAgeGroupCreate]):
+        new_groups = self.dedup_age_groups([PlaceAgeGroupCreate(**a) for a in age_groups])
+        old_groups = {ag.age_group: ag for ag in place.age_groups}
+        to_remove = set(old_groups) - set(new_groups)
+        to_add = set(new_groups) - set(old_groups)
+        to_keep = set(new_groups) & set(old_groups)
+
+        if to_remove:
+            self.db.query(PlaceAgeGroup).filter(
+                PlaceAgeGroup.place_id == place.id,
+                PlaceAgeGroup.age_group.in_(to_remove),
+            ).delete(synchronize_session="evaluate")
+
+        for age_group in to_add:
+            self.db.add(PlaceAgeGroup(place_id=place.id, age_group=age_group, suitability=new_groups[age_group]))
+
+        for age_group in to_keep:
+            if old_groups[age_group].suitability != new_groups[age_group]:
+                old_groups[age_group].suitability = new_groups[age_group]
+
     def update_place(self, place: Place, payload: PlaceUpdate) -> Place:
         data = payload.model_dump(exclude_unset=True)
         cate_ids = data.pop('category_ids', None)
@@ -156,22 +216,11 @@ class PlaceRepository(BaseRepository[Place]):
             setattr(place, field, value)
 
         if cate_ids is not None:
-            ids = self.check_cates(cate_ids)
-            self.db.query(PlaceCategory).filter_by(place_id=place.id).delete(synchronize_session=False)
-            for cate_id in ids:
-                self.db.add(PlaceCategory(place_id=place.id, category_id=cate_id))
-
+            self._sync_categories(place=place, category_ids=cate_ids)
         if tags is not None:
-            checked = self.check_tags([PlaceTagCreate(**t) for t in tags])
-            self.db.query(PlaceTag).filter_by(place_id=place.id).delete(synchronize_session=False)
-            for tag_id, relevance in checked.items():
-                self.db.add(PlaceTag(place_id=place.id, tag_id=tag_id, relevance=relevance))
-
+            self._sync_tags(place=place, tags=tags)
         if age_groups is not None:
-            groups = self.dedup_age_groups([PlaceAgeGroupCreate(**a) for a in age_groups])
-            self.db.query(PlaceAgeGroup).filter_by(place_id=place.id).delete(synchronize_session=False)
-            for age_group, suitability in groups.items():
-                self.db.add(PlaceAgeGroup(place_id=place.id, age_group=age_group, suitability=suitability))
+            self._sync_age_groups(place=place, age_groups=age_groups)
 
         self.db.commit()
 
@@ -237,17 +286,19 @@ class PlaceRepository(BaseRepository[Place]):
         return data
 
     def to_summary_data(self, place: Place) -> dict:
-        primary = next((i.img_url for i in place.images if i.is_primary), None)
+
 
         data = {
-            'id': place.id, 'name': place.name, 'district': place.district, 'average_rating': place.average_rating,
+            'id': place.id, 'name': place.name, 'address': place.address, 'ward': place.ward,
+            'average_rating': place.average_rating,
             'total_reviews': place.total_reviews, 'total_views': place.total_views, 'is_featured': place.is_featured,
-            'status': place.status, 'primary_image': primary,
+            'status': place.status, 'primary_image': place.primary_image,
+            'opening_time': place.opening_time, 'closing_time': place.closing_time,
         }
 
         return data
 
-    def search_filters(self, *, q=None, category_ids=None, tag_ids=None, district=None,
+    def search_filters(self, *, q=None, category_ids=None, tag_ids=None,
                        ward=None, price_min=None, price_max=None, min_rating=None, age_group=None, min_suitability=None,
                        is_featured=None, status=PlaceStatus.ACTIVE) -> list:
         conditions = []
@@ -256,15 +307,13 @@ class PlaceRepository(BaseRepository[Place]):
             conditions.append(Place.status == status)
 
         if q and q.strip():
-            pattern = f'%{q.strip}%'
+            pattern = f'%{q.strip()}%'
             conditions.append(
                 or_(Place.name.ilike(pattern),
                     Place.address.ilike(pattern),
                     Place.description.ilike(pattern),
                     ))
 
-        if district:
-            conditions.append(Place.district == district)
         if ward:
             conditions.append(Place.ward == ward)
         if is_featured is not None:
@@ -309,14 +358,13 @@ class PlaceRepository(BaseRepository[Place]):
         return conditions
 
     def search_places(self, *, q: str | None = None, category_ids: list[int] | None = None,
-                      tag_ids: list[int] | None = None,
-                      district: str | None = None, ward: str | None = None, price_min=None, price_max=None,
+                      tag_ids: list[int] | None = None, ward: str | None = None, price_min=None, price_max=None,
                       min_rating=None, age_group: AgeGroup | None = None, min_suitability: int | None = None,
                       is_featured: bool | None = None, sort_by: PlaceSortBy = PlaceSortBy.POPULAR,
                       skip: int = 0, limit: int = 20, status: PlaceStatus | None = PlaceStatus.ACTIVE) -> tuple[
         list[Place], int]:
         conditions = self.search_filters(
-            q=q, category_ids=category_ids, tag_ids=tag_ids, district=district, ward=ward, price_min=price_min,
+            q=q, category_ids=category_ids, tag_ids=tag_ids, ward=ward, price_min=price_min,
             price_max=price_max, min_rating=min_rating, age_group=age_group, min_suitability=min_suitability,
             is_featured=is_featured, status=status,
         )
@@ -340,12 +388,10 @@ class PlaceRepository(BaseRepository[Place]):
 
         return places, total
 
-    def list_districts(self, status: PlaceStatus | None = PlaceStatus.ACTIVE) -> list[dict]:
-        q = self.db.query(Place.district, func.count(Place.id))
-
+    def list_wards(self, status: PlaceStatus | None = PlaceStatus.ACTIVE):
+        q = self.db.query(Place.ward, func.count(Place.id))
         if status is not None:
             q = q.filter_by(status=status)
+        rows = q.group_by(Place.ward).order_by(Place.ward.asc()).all()
 
-        rows = q.group_by(Place.district).order_by(Place.district.asc()).all()
-
-        return [{'district': d, 'total': c} for d, c in rows]
+        return [{'ward': w, 'total': c} for w, c in rows]

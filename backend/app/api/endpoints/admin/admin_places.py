@@ -1,14 +1,12 @@
-from fastapi import Depends, APIRouter, HTTPException, Query, status, UploadFile, File
+from fastapi import Depends, APIRouter, Query, status, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_admin, get_db
-from app.api.helpers import get_place_or_404
 from app.models import User
 from app.models.enums import PlaceStatus
-from app.repository.place_repository import PlaceRepository
 from app.schemas.place import PlaceSummaryResponse, PlaceCreate, PlaceResponse, PlaceUpdate, PlaceStatusUpdate, \
-    PlaceFeaturedUpdate, PlaceImageCreate
-from app.service.upload_image_service import upload_place_images
+    PlaceFeaturedUpdate
+from app.service.place_service import PlaceService
 
 router = APIRouter()
 
@@ -16,107 +14,70 @@ router = APIRouter()
 @router.get('/admin/all', response_model=list[PlaceSummaryResponse])
 def admin_list_places(skip: int = 0, limit: int = Query(default=20, le=100),
                       place_status: PlaceStatus | None = None,
-                      district: str | None = None,
+                      ward: str | None = None,
+                      category_id: int | None = None,
                       admin: User = Depends(get_current_admin),
                       db: Session = Depends(get_db)):
-    repo = PlaceRepository(db)
-    places = repo.list_full(skip=skip, limit=limit, status=place_status, district=district)
+    return PlaceService(db).admin_list(skip=skip, limit=limit, place_status=place_status, ward=ward,
+                                       category_id=category_id)
 
-    return [repo.to_summary_data(p) for p in places]
+
+@router.post('/admin/reindex')
+def reindex_places(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    return PlaceService(db).reindex_all()
+
+
+@router.get('/admin/{place_id}', response_model=PlaceResponse)
+def admin_get_place(place_id: int, admin: User = Depends(get_current_admin),
+                    db: Session = Depends(get_db)):
+    return PlaceService(db).admin_get(place_id)
 
 
 @router.post('/', response_model=PlaceResponse, status_code=status.HTTP_201_CREATED)
 def create_place(payload: PlaceCreate, admin: User = Depends(get_current_admin),
                  db: Session = Depends(get_db)):
-    repo = PlaceRepository(db)
-    if repo.get_by_name(payload.name):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail='Tên địa điểm đã tồn tại')
-    try:
-        place = repo.create_place(payload, created_by=admin.id)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=str(e))
-
-    return repo.to_response_data(place)
+    return PlaceService(db).create(payload, created_by=admin.id)
 
 
-@router.put('/{place_id}', response_model=PlaceResponse)
+@router.patch('/{place_id}', response_model=PlaceResponse)
 def update_place(place_id: int, payload: PlaceUpdate, admin: User = Depends(get_current_admin),
                  db: Session = Depends(get_db)):
-    repo = PlaceRepository(db)
-    place = get_place_or_404(repo, place_id)
-    if payload.name and payload.name != place.name and repo.get_by_name(payload.name):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail='Tên địa điểm đã tồn tại')
-    try:
-        updated = repo.update_place(place, payload)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=str(e))
-
-    return repo.to_response_data(updated)
+    return PlaceService(db).update(place_id, payload)
 
 
 @router.delete('/{place_id}', status_code=status.HTTP_204_NO_CONTENT)
 def delete_place(place_id: int, admin: User = Depends(get_current_admin),
                  db: Session = Depends(get_db)):
-    repo = PlaceRepository(db)
-    place = get_place_or_404(repo, place_id)
-    repo.delete(place)
+    PlaceService(db).delete(place_id)
 
 
 @router.patch('/{place_id}/status', response_model=PlaceResponse)
 def update_place_status(place_id: int, payload: PlaceStatusUpdate,
                         admin: User = Depends(get_current_admin),
                         db: Session = Depends(get_db)):
-    repo = PlaceRepository(db)
-    place = get_place_or_404(repo, place_id)
-    if place.status == payload.status:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Trùng status')
-    return repo.to_response_data(repo.set_status(place, payload.status))
+    return PlaceService(db).set_status(place_id, payload)
 
 
 @router.patch('/{place_id}/featured', response_model=PlaceResponse)
 def update_place_featured(place_id: int, payload: PlaceFeaturedUpdate,
                           admin: User = Depends(get_current_admin),
                           db: Session = Depends(get_db)):
-    repo = PlaceRepository(db)
-    place = get_place_or_404(repo, place_id)
-    return repo.to_response_data(repo.set_featured(place, payload.is_featured))
+    return PlaceService(db).set_featured(place_id, payload)
 
 
 @router.post('/{place_id}/images', response_model=PlaceResponse, status_code=status.HTTP_201_CREATED)
 def add_place_images(place_id: int, files: list[UploadFile] = File(...), admin: User = Depends(get_current_admin),
                      db: Session = Depends(get_db)):
-    if not files:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Danh sách ảnh trống')
-
-    repo = PlaceRepository(db)
-    place = get_place_or_404(repo, place_id)
-    place = upload_place_images(db=db, place=place, files=files)
-    return repo.to_response_data(place)
+    return PlaceService(db).add_images(place_id, files)
 
 
 @router.patch('/{place_id}/images/{image_id}/primary', response_model=PlaceResponse)
 def set_primary_image(place_id: int, image_id: int, admin: User = Depends(get_current_admin),
                       db: Session = Depends(get_db)):
-    repo = PlaceRepository(db)
-    place = get_place_or_404(repo, place_id)
-    img = repo.get_image(place_id=place_id, img_id=image_id)
-    if img is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail='Ảnh không tồn tại')
-    return repo.to_response_data(repo.set_primary_image(place, img))
+    return PlaceService(db).set_primary_image(place_id, image_id)
 
 
 @router.delete('/{place_id}/images/{image_id}', response_model=PlaceResponse)
 def delete_place_image(place_id: int, image_id: int, admin: User = Depends(get_current_admin),
                        db: Session = Depends(get_db)):
-    repo = PlaceRepository(db)
-    place = get_place_or_404(repo, place_id)
-    img = repo.get_image(place_id, image_id)
-    if img is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail='Ảnh không tồn tại')
-    return repo.to_response_data(repo.delete_image(place, img))
+    return PlaceService(db).delete_image(place_id, image_id)

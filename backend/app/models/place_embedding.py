@@ -12,7 +12,7 @@ class PlaceEmbedding(Base):
     place_id = Column(Integer, ForeignKey('place.id', ondelete='CASCADE'), nullable=False)
     chunk_index = Column(SmallInteger, nullable=False, server_default="0")
     chunk_text = Column(Text, nullable=False)
-    embedding = Column(VECTOR(1536), nullable=False)
+    embedding = Column(VECTOR(768), nullable=False)
     metadata_ = Column('metadata', JSONB)
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
 

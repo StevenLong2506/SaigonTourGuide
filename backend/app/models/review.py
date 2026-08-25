@@ -25,5 +25,5 @@ class Review(Base):
     __table_args__ = (
         UniqueConstraint("place_id", "user_id"),
     )
-
+    user = relationship('User', lazy=True)
     embeddings = relationship('ReviewEmbedding', backref='review', lazy=True, cascade="all, delete-orphan")

@@ -8,6 +8,7 @@ from app.repository.category_repository import CategoryRepository
 from app.repository.interest_tag_repository import InterestTagRepository
 from app.repository.place_repository import PlaceRepository
 from app.repository.review_repository import ReviewRepository
+from app.repository.user_repository import UserRepository
 
 
 def get_place_or_404(repo: PlaceRepository, place_id: int):
@@ -47,3 +48,11 @@ def get_category_or_404(repo: CategoryRepository, cate_id:int):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail='Danh mục không tồn tại')
     return cate
+
+
+def get_user_or_404(repo: UserRepository, user_id:int):
+    u = repo.get_by_id(user_id=user_id)
+    if u is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail='Người dùng không tồn tại')
+    return u

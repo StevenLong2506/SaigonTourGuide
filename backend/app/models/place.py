@@ -11,10 +11,9 @@ class Place(Base):
     name = Column(String(100), nullable=False)
     address = Column(String(200), nullable=False)
     description = Column(Text, nullable=False)
-    district = Column(String(50), nullable=False)
     ward = Column(String(50), nullable=False)
     link_google_map = Column(String(300), nullable=False)
-    phone = Column(String(15), nullable=False)
+    phone = Column(String(15))
     website = Column(String(200))
     price_min = Column(DECIMAL(12,0), nullable=False, server_default="0")
     price_max = Column(DECIMAL(12, 0), nullable=False, server_default="0")
@@ -38,3 +37,9 @@ class Place(Base):
     favorite_by = relationship("Favorite", backref="place", cascade="all, delete-orphan", lazy=True)
     visited_by = relationship("VisitedPlace", backref="place", cascade="all, delete-orphan", lazy=True)
     embeddings = relationship("PlaceEmbedding", backref="place", cascade="all, delete-orphan", lazy=True)
+
+    @property
+    def primary_image(self):
+        for img in self.images:
+            if img.is_primary:
+                return img.img_url
