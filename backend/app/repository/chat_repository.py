@@ -19,13 +19,9 @@ class ChatRepository(BaseRepository[ChatSession]):
     def get_sessions_by_user(self, user_id: int) -> list[ChatSession]:
         return self.db.query(ChatSession).filter_by(user_id=user_id).order_by(ChatSession.updated_at.desc()).all()
 
-    def add_message(self, session_id:int, role: MessageRole, content: str, model_used: str|None=None):
+    def add_message(self, session_id:int, role: MessageRole, content: str, model_used: str|None=None) -> ChatMessage:
         msg = ChatMessage(session_id=session_id, model_used=model_used, content=content, user_role=role)
-
-        self.db.add(msg)
-        self.db.commit()
-        self.db.refresh(msg)
-        return msg
+        return self.create(msg)
 
     def touch_session(self, session: ChatSession):
         session.updated_at=func.now()

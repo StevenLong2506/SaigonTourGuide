@@ -7,7 +7,7 @@ from app.models.enums import MessageRole
 from app.repository.chat_repository import ChatRepository
 from app.repository.user_repository import UserRepository
 from app.schemas.chat import ChatRequest
-from app.service.rag_service import answer_question
+from app.service import rag_service
 
 
 def _build_profile_text(user: User):
@@ -49,7 +49,7 @@ class ChatService:
         user = self.user_repo.get_full(user_id)
         profile_text = _build_profile_text(user)
         try:
-            result = answer_question(
+            result = rag_service.answer_question(
                 db=self.db, query=payload.message, user_profile=profile_text, ward=payload.ward,
                 max_price=payload.max_price,
             )
