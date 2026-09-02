@@ -147,7 +147,7 @@ def reindex_all_places(db: Session, batch_size: int = 50):
     return count
 
 
-def search_similar_places(db: Session,
+def _search_similar_places(db: Session,
                           query: str,
                           top_k: int | None = None,
                           ward: str | None = None,
@@ -158,8 +158,7 @@ def search_similar_places(db: Session,
     top_k = top_k or settings.RAG_TOP_K
     query_vector = embedding_text(query)
 
-    repo = PlaceEmbeddingRepository(db)
-    rows = repo.search_similar_places(
+    rows = PlaceEmbeddingRepository(db).search_similar_places(
         query_vector, top_k=top_k, ward=ward, max_price=max_price,
         min_rating=min_rating, tag_ids=tag_ids, age_group=age_group
     )
@@ -205,7 +204,7 @@ def answer_question(db: Session, query: str,
                     min_rating: float | None = None,
                     tag_ids: list[int] | None = None,
                     age_group: 'AgeGroup |None' = None) -> dict:
-    results = search_similar_places(
+    results = _search_similar_places(
         db=db, query=query, top_k=top_k, ward=ward, max_price=max_price,
         min_rating=min_rating, tag_ids=tag_ids, age_group=age_group
     )
@@ -263,7 +262,7 @@ def generate_itinerary_plan(db: Session, query: str, duration_day: int, num_peop
 
     top_k = duration_day * 4 + 2
 
-    results=search_similar_places(
+    results=_search_similar_places(
         db=db, query=query, top_k=top_k, ward=ward, max_price=max_price
     )
 

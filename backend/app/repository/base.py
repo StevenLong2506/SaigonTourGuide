@@ -23,9 +23,12 @@ class BaseRepository(Generic[ModelType]):
             self.db.commit()
             self.db.refresh(obj)
             return obj
-        except IntegrityError:
+        except IntegrityError as e:
             self.db.rollback()
-            raise ValueError('Lỗi tạo dữ liệu! Dữ liệu đã tồn tại hoặc vi phạm ràng buộc')
+            raise ValueError(f'Lỗi tạo dữ liệu! Dữ liệu đã tồn tại hoặc vi phạm ràng buộc {str(e)}')
+        except Exception:
+            self.db.rollback()
+            raise
 
 
     def update(self, obj: ModelType) -> ModelType:
@@ -36,14 +39,17 @@ class BaseRepository(Generic[ModelType]):
         except IntegrityError:
             self.db.rollback()
             raise ValueError('Lỗi cập nhật dữ liệu')
+        except Exception:
+            self.db.rollback()
+            raise
 
     def delete(self, obj: ModelType) -> None:
         try:
             self.db.delete(obj)
             self.db.commit()
-        except IntegrityError:
+        except Exception:
             self.db.rollback()
-            raise ValueError('Lỗi xóa dữ liệu! Dữ liệu đang được tham chiếu ở nơi khác')
+            raise
 
     @staticmethod
     def model_columns_to_dict(obj) -> dict:
