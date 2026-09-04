@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Text, DECIMAL, Time, Boolean, Enum, ForeignKey, TIMESTAMP, func
+from sqlalchemy import Column, Integer, String, Text, DECIMAL, Time, Boolean, Enum, ForeignKey, TIMESTAMP, func, \
+    Index, text
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
@@ -28,6 +29,30 @@ class Place(Base):
     created_by = Column(Integer, ForeignKey("users.id", ondelete='SET NULL'))
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
     updated_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        Index('ix_place_created_by', 'created_by'),
+        Index('ix_place_name', 'name'),
+        # list_full(): filter status + ORDER BY created_at DESC
+        Index('ix_place_status_created_at', 'status', text('created_at DESC')),
+        # search_places() theo PlaceSortBy
+        Index('ix_place_status_total_views', 'status', text('total_views DESC')),
+        Index('ix_place_status_rating', 'status',
+              text('average_rating DESC'), text('total_reviews DESC')),
+        Index('ix_place_status_price_min', 'status', 'price_min'),
+        Index('ix_place_status_price_max', 'status', text('price_max DESC')),
+        # filter ward + list_wards() GROUP BY ward
+        Index('ix_place_status_ward', 'status', 'ward'),
+        Index('ix_place_featured_status', 'status',
+              postgresql_where=text('is_featured')),
+        # search_places(): ILIKE '%q%' trên name/address/description
+        Index('ix_place_name_trgm', 'name',
+              postgresql_using='gin', postgresql_ops={'name': 'gin_trgm_ops'}),
+        Index('ix_place_address_trgm', 'address',
+              postgresql_using='gin', postgresql_ops={'address': 'gin_trgm_ops'}),
+        Index('ix_place_description_trgm', 'description',
+              postgresql_using='gin', postgresql_ops={'description': 'gin_trgm_ops'}),
+    )
 
     categories = relationship('PlaceCategory', backref='place', lazy=True, cascade='all, delete-orphan')
     tags = relationship('PlaceTag', backref='place', lazy=True, cascade='all, delete-orphan')

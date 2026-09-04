@@ -14,4 +14,5 @@ class TokenBlackList(Base):
 
     __table_args__ =(
         Index('ix_tokenblacklist_expires_at', 'expires_at'),
+        Index('ix_tokenblacklist_user_id', 'user_id'),
     )

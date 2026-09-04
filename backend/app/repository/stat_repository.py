@@ -1,14 +1,14 @@
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import DailyStat, Place, Review, User, Favorite
+from app.models import Place, Review, User, Favorite
 from app.models.enums import PlaceStatus, ReviewStatus, TopPlaceOrderBy
 from app.repository.base import BaseRepository
 
 
-class StatRepository(BaseRepository[DailyStat]):
+class StatRepository(BaseRepository[Place]):
     def __init__(self, db: Session):
-        super().__init__(DailyStat, db)
+        super().__init__(Place, db)
 
     def count_places(self, status: PlaceStatus | None = None) -> int:
         q = self.db.query(Place)
@@ -57,7 +57,7 @@ class StatRepository(BaseRepository[DailyStat]):
             TopPlaceOrderBy.VIEWS: Place.total_views.desc(),
             TopPlaceOrderBy.RATING: Place.average_rating.desc(),
             TopPlaceOrderBy.REVIEWS: Place.total_reviews.desc(),
-            TopPlaceOrderBy.FAVORITES: favorite_count.desc(),
+            TopPlaceOrderBy.FAVORITES: favorite_count.desc()
         }
 
         return (self.db.query(Place, favorite_count)

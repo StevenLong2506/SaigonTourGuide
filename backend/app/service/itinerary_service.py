@@ -39,7 +39,7 @@ class ItineraryService:
         itinerary = self.get_owned(itinerary_id=itinerary_id, user_id=user_id)
         self.repo.delete_itinerary(itinerary=itinerary)
 
-    def generate_unique_share_code(self):
+    def _generate_unique_share_code(self):
         for _ in range(5):
             code = secrets.token_urlsafe(8)
             if not self.repo.get_share_by_code(code=code):
@@ -51,7 +51,7 @@ class ItineraryService:
     def share(self, itinerary_id: int, user_id: int):
         itinerary = self.get_owned(itinerary_id=itinerary_id, user_id=user_id)
         if not itinerary.share_code:
-            code = self.generate_unique_share_code()
+            code = self._generate_unique_share_code()
             self.repo.set_share_code(itinerary=itinerary, code=code)
 
         return {

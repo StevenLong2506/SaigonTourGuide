@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, String, Boolean, TIMESTAMP, func
+from sqlalchemy import Column, Integer, ForeignKey, String, Boolean, TIMESTAMP, func, Index
 
 from app.db.base import Base
 
@@ -11,3 +11,7 @@ class PlaceImage(Base):
     caption = Column(String(255))
     is_primary = Column(Boolean, nullable=False, server_default="false")
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        Index('ix_placeimage_place_id', 'place_id'),
+    )
