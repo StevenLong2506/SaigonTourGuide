@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, Enum, Text, String, TIMESTAMP, func
+from sqlalchemy import Column, Integer, ForeignKey, Enum, Text, String, TIMESTAMP, func, Index
 
 from app.db.base import Base
 from app.models.enums import UserRole, MessageRole
@@ -14,3 +14,8 @@ class ChatMessage(Base):
     model_used = Column(String(100))
     token_used = Column(Integer, server_default="0")
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
+
+    # relationship messages: ORDER BY created_at
+    __table_args__ = (
+        Index('ix_chatmessage_session_created', 'session_id', 'created_at'),
+    )

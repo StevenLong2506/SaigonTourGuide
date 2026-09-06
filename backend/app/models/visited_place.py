@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, UniqueConstraint, Enum, TIMESTAMP, func, Date
+from sqlalchemy import Column, Integer, ForeignKey, UniqueConstraint, Enum, TIMESTAMP, func, Date, Index
 
 from app.db.base import Base
 from app.models.enums import VisitedPlaceSource
@@ -15,4 +15,6 @@ class VisitedPlace(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "place_id"),
+        # UNIQUE (user_id, place_id) đã phủ chiều user_id
+        Index('ix_visitedplace_place_id', 'place_id'),
     )

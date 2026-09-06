@@ -81,13 +81,20 @@ export default function DashboardPage() {
 
     const loadKeywords = async (d?: number) => {
         try {
-            const [popularRes, zeroRes] = await Promise.all([
+            const [popularRes, zeroRes] = await Promise.allSettled([
                 api.get<KeywordStatResponse[]>('/admin/stats/popular-keywords', { params: { limit: 20, days: d } }),
                 api.get<KeywordStatResponse[]>('/admin/stats/zero-result-keywords', { params: { limit: 20, days: d } })
             ])
 
-            setPopularKeywords(popularRes.data);
-            setZeroResultKeywords(zeroRes.data);
+            if(popularRes.status === 'fulfilled')
+                setPopularKeywords(popularRes.value.data);
+            else
+                message.error(getErrorMessage(popularRes.reason));
+
+            if (zeroRes.status === 'fulfilled')
+                setZeroResultKeywords(zeroRes.value.data);
+            else
+                message.error(getErrorMessage(zeroRes.reason));
         }
         catch (e) {
             message.error(getErrorMessage(e));

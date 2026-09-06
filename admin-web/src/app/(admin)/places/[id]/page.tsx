@@ -269,8 +269,6 @@ export default function EditPlacePage() {
             const formData = new FormData();
             formData.append('files', file as File);
             try {
-
-
                 await api.post(`/places/${placeId}/images`, formData, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });

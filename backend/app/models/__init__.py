@@ -18,6 +18,4 @@ from app.models.itinerary_item import ItineraryItem
 from app.models.chat_session import ChatSession
 from app.models.chat_message import ChatMessage
 from app.models.place_embedding import PlaceEmbedding
-from app.models.review_embedding import ReviewEmbedding
-from app.models.daily_stat import DailyStat
 from app.models.token_blacklist import TokenBlackList

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, String, Text, Date, SmallInteger, TIMESTAMP, func
+from sqlalchemy import Column, Integer, ForeignKey, String, Text, Date, SmallInteger, TIMESTAMP, func, Index, text
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
@@ -18,6 +18,12 @@ class Itinerary(Base):
     option_number = Column(SmallInteger)
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
     updated_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        # get_by_user(): filter user_id + ORDER BY updated_at DESC
+        Index('ix_itinerary_user_updated', 'user_id', text('updated_at DESC')),
+        Index('ix_itinerary_trip_request_id', 'trip_request_id'),
+    )
 
     items = relationship(
         "ItineraryItem", backref="itinerary",

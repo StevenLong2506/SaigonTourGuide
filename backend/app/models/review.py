@@ -1,5 +1,5 @@
 from sqlalchemy import Integer, Column, ForeignKey, SmallInteger, String, Text, Date, Enum, TIMESTAMP, func, \
-    UniqueConstraint
+    UniqueConstraint, Index, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -24,6 +24,10 @@ class Review(Base):
 
     __table_args__ = (
         UniqueConstraint("place_id", "user_id"),
+        Index('ix_review_user_id', 'user_id'),
+        # calculate_place_rating(): AVG/COUNT theo place_id + status = APPROVED
+        Index('ix_review_place_status', 'place_id', 'status'),
+        # list_full() phía admin: filter status + ORDER BY created_at DESC
+        Index('ix_review_status_created_at', 'status', text('created_at DESC')),
     )
     user = relationship('User', lazy=True)
-    embeddings = relationship('ReviewEmbedding', backref='review', lazy=True, cascade="all, delete-orphan")

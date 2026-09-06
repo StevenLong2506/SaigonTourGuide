@@ -5,9 +5,9 @@ from app.api.helpers import get_place_or_404
 from app.models.enums import PlaceSortBy, PlaceStatus
 from app.repository.place_repository import PlaceRepository
 from app.schemas.place import PlaceCreate, PlaceUpdate, PlaceStatusUpdate, PlaceFeaturedUpdate
-from app.service import rag_service
+from app.service import rag_service, upload_image_service
 from app.service.stat_service import StatService
-from app.service.upload_image_service import upload_place_images
+
 
 
 class PlaceService:
@@ -115,7 +115,7 @@ class PlaceService:
         if not files:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Danh sách ảnh trống')
         place = get_place_or_404(self.repo, place_id)
-        place = upload_place_images(db=self.db, place=place, files=files)
+        place = upload_image_service.upload_place_images(db=self.db, place=place, files=files)
         return self.repo.to_response_data(place)
 
     def set_primary_image(self, place_id: int, image_id: int):

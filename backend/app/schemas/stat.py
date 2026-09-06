@@ -1,5 +1,3 @@
-from datetime import date
-
 from pydantic import BaseModel
 
 
@@ -23,15 +21,3 @@ class TopPlaceResponse(BaseModel):
     total_reviews: int
     average_rating: float
     favorite_count: int
-
-
-class DailyStatResponse(BaseModel):
-    stat_date: date
-    place_id: int
-    view_count: int
-    review_count: int
-    favorite_count: int
-    search_count: int
-
-    class Config:
-        from_attributes = True
