@@ -1,15 +1,14 @@
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
 
-from app.api.helpers import get_category_or_404
+from app.service.helpers import get_category_or_404
 from app.repository.category_repository import CategoryRepository
 from app.schemas.category import CategoryCreate, CategoryUpdate
 
 
+
 class CategoryService:
-    def __init__(self, db: Session):
-        self.db = db
-        self.repo = CategoryRepository(db)
+    def __init__(self, repo: CategoryRepository):
+        self.repo = repo
 
     def list_all(self, skip: int = 0, limit: int = 100):
         return self.repo.get_all_with_place_count(skip=skip, limit=limit)

@@ -1,19 +1,21 @@
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy.orm import Session
 
-from app.api.helpers import get_place_or_404
+from app.service.helpers import get_place_or_404
 from app.models.enums import PlaceSortBy, PlaceStatus
 from app.repository.place_repository import PlaceRepository
 from app.schemas.place import PlaceCreate, PlaceUpdate, PlaceStatusUpdate, PlaceFeaturedUpdate
-from app.service import rag_service, upload_image_service
+from app.service.rag_service import RagService
+from app.service.upload_image_service import UploadImageService
 from app.service.stat_service import StatService
 
 
-
 class PlaceService:
-    def __init__(self, db: Session):
-        self.db = db
-        self.repo = PlaceRepository(db)
+    def __init__(self, repo: PlaceRepository, stat_service: StatService, rag_service: RagService,
+                 upload_service: UploadImageService):
+        self.repo = repo
+        self.stat_service = stat_service
+        self.rag_service = rag_service
+        self.upload_service = upload_service
 
     def search(self, *, q, category_ids, tag_ids, ward, price_min, price_max, min_rating,
                age_group, min_suitability, is_featured, sort_by: PlaceSortBy, skip, limit):
@@ -27,7 +29,7 @@ class PlaceService:
             is_featured=is_featured, sort_by=sort_by, skip=skip, limit=limit, status=PlaceStatus.ACTIVE,
         )
 
-        StatService(self.db).log_search(
+        self.stat_service.log_search(
             query_text=q,
             filters={'ward': ward, 'category_ids': category_ids, 'tag_ids': tag_ids,
                      'price_min': price_min, 'price_max': price_max},
@@ -75,7 +77,7 @@ class PlaceService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
         try:
-            rag_service.index_place(db=self.db, place=place)
+            self.rag_service.index_place(place=place)
         except Exception:
             pass
 
@@ -91,7 +93,7 @@ class PlaceService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
         try:
-            rag_service.index_place(db=self.db, place=updated)
+            self.rag_service.index_place(place=updated)
         except Exception:
             pass
 
@@ -115,7 +117,7 @@ class PlaceService:
         if not files:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Danh sách ảnh trống')
         place = get_place_or_404(self.repo, place_id)
-        place = upload_image_service.upload_place_images(db=self.db, place=place, files=files)
+        place = self.upload_service.upload_place_images(place=place, files=files)
         return self.repo.to_response_data(place)
 
     def set_primary_image(self, place_id: int, image_id: int):
@@ -133,5 +135,5 @@ class PlaceService:
         return self.repo.to_response_data(self.repo.delete_image(place, img))
 
     def reindex_all(self):
-        total = rag_service.reindex_all_places(self.db)
+        total = self.rag_service.reindex_all_places()
         return {'message': f'Đã tạo embedding cho {total} địa điểm'}

@@ -1,15 +1,12 @@
-from sqlalchemy.orm import Session
-
 from app.models.enums import TopPlaceOrderBy
 from app.repository.search_log_repository import SearchLogRepository
 from app.repository.stat_repository import StatRepository
 
 
 class StatService:
-    def __init__(self, db: Session):
-        self.db = db
-        self.search_log_repo = SearchLogRepository(db)
-        self.stat_repo = StatRepository(db)
+    def __init__(self, stat_repo: StatRepository, search_log_repo: SearchLogRepository):
+        self.search_log_repo = search_log_repo
+        self.stat_repo = stat_repo
 
     def get_overview(self):
         return self.stat_repo.get_overview()
@@ -27,7 +24,7 @@ class StatService:
             self.search_log_repo.create_log(query_text=query_text, filters=filters, result_count=result_count,
                                             user_id=user_id)
         except Exception:
-            self.db.rollback()
+            pass
 
 
     def get_popular_keywords(self, limit:int=20, days:int|None=None):

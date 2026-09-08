@@ -5,7 +5,6 @@ from google import genai
 from google.genai import types
 from pyvi.ViTokenizer import ViTokenizer
 from sentence_transformers import SentenceTransformer
-from sqlalchemy.orm import Session
 
 from app import settings
 from app.models import Place
@@ -70,243 +69,235 @@ def embedding_texts(texts: list[str]):
     return [vector.tolist() for vector in vectors]
 
 
-def chat_completion(sys_prompt: str, user_prompt: str):
-    res = genai_client.models.generate_content(
-        model=settings.CHAT_MODEL,
-        contents=user_prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=sys_prompt, temperature=0.3
-        )
-    )
-
-    return (res.text or '').strip()
+class RagService:
+    def __init__(self, embedding_repo: PlaceEmbeddingRepository):
+        self.embedding_repo= embedding_repo
 
 
-def build_place_document(place: Place):
-    parts = [f'Tên địa điểm: {place.name}']
-    if place.description:
-        parts.append(f'Mô tả: {place.description}')
 
-    parts.append(f'Khu vực: {place.ward}, TP.HCM')
-
-    cate_names = [pc.category.name for pc in place.categories if pc.category]
-
-    if cate_names:
-        parts.append(f'Danh mục: {", ".join(cate_names)}')
-
-    tag_names = [pt.tag.name for pt in place.tags if pt.tag]
-
-    if tag_names:
-        parts.append(f'Hợp với sở thích: {', '.join(tag_names)}')
-
-    if place.age_groups:
-        ages = [f'{ag.age_group.value} ({ag.suitability}/5)' for ag in place.age_groups]
-        parts.append(f'Độ phù hợp nhóm tuổi: {', '.join(ages)}')
-
-    try:
-        pmax = int(place.price_max)
-        if pmax > 0:
-            parts.append(f'Khoảng giá: {int(place.price_min):,} - {pmax:,} VND')
-    except (TypeError, ValueError):
-        pass
-
-    return '\n'.join(parts)
-
-
-def index_place(db: Session, place: Place):
-    doc = build_place_document(place=place)
-    vector = embedding_text(text=doc)
-    repo = PlaceEmbeddingRepository(db)
-    repo.replace_place_chunk(
-        place_id=place.id,
-        chunk_text=doc, embedding=vector,
-        metadata={'name': place.name, 'ward': place.ward}
-    )
-
-    repo.commit()
-    return 1
-
-
-def reindex_all_places(db: Session, batch_size: int = 50):
-    repo = PlaceEmbeddingRepository(db)
-    places = repo.get_all_places()
-    count = 0
-    for i in range(0, len(places), batch_size):
-        batch = places[i:i + batch_size]
-        docs = [build_place_document(p) for p in batch]
-        vectors = embedding_texts(docs)
-        for p, doc, vec in zip(batch, docs, vectors):
-            repo.replace_place_chunk(
-                place_id=p.id, chunk_text=doc, embedding=vec,
-                metadata={'name': p.name, 'ward': p.ward}
+    def chat_completion(self, sys_prompt: str, user_prompt: str):
+        res = genai_client.models.generate_content(
+            model=settings.CHAT_MODEL,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=sys_prompt, temperature=0.3
             )
-            count += 1
+        )
 
-        repo.commit()
+        return (res.text or '').strip()
 
-    return count
+    def build_place_document(self, place: Place):
+        parts = [f'Tên địa điểm: {place.name}']
+        if place.description:
+            parts.append(f'Mô tả: {place.description}')
 
+        parts.append(f'Khu vực: {place.ward}, TP.HCM')
 
-def _search_similar_places(db: Session,
-                          query: str,
-                          top_k: int | None = None,
-                          ward: str | None = None,
-                          max_price: int | None = None,
-                          min_rating: float | None = None,
-                          tag_ids: list[int] | None = None,
-                          age_group: AgeGroup | None = None):
-    top_k = top_k or settings.RAG_TOP_K
-    query_vector = embedding_text(query)
+        cate_names = [pc.category.name for pc in place.categories if pc.category]
 
-    rows = PlaceEmbeddingRepository(db).search_similar_places(
-        query_vector, top_k=top_k, ward=ward, max_price=max_price,
-        min_rating=min_rating, tag_ids=tag_ids, age_group=age_group
-    )
+        if cate_names:
+            parts.append(f'Danh mục: {", ".join(cate_names)}')
 
-    return [
-        {'place': place, 'distance': float(dist), 'similarity': 1 - float(dist)}
-        for place, dist in rows
-    ]
+        tag_names = [pt.tag.name for pt in place.tags if pt.tag]
 
+        if tag_names:
+            parts.append(f'Hợp với sở thích: {', '.join(tag_names)}')
 
-def build_context(places: list):
-    blocks = []
-    for i, p in enumerate(places, 1):
-        lines = [f'[{i}] {p.name} - {p.ward}']
-        if p.description:
-            desc = p.description[:400]
-            lines.append(f'Mô tả: {desc}')
-        cates = [pc.category.name for pc in p.categories if pc.category]
+        if place.age_groups:
+            ages = [f'{ag.age_group.value} ({ag.suitability}/5)' for ag in place.age_groups]
+            parts.append(f'Độ phù hợp nhóm tuổi: {', '.join(ages)}')
 
-        if cates:
-            lines.append(f'Danh mục: {", ".join(cates)}')
         try:
-            pmax = int(p.price_max)
+            pmax = int(place.price_max)
             if pmax > 0:
-                lines.append(f'Giá tham khảo: {int(p.price_min):,} - {pmax:,} VND')
+                parts.append(f'Khoảng giá: {int(place.price_min):,} - {pmax:,} VND')
         except (TypeError, ValueError):
             pass
 
-        if p.average_rating:
-            lines.append(f'Đánh giá: {p.average_rating}/5 ({p.total_reviews} lượt)')
+        return '\n'.join(parts)
 
-        lines.append(f'Giờ mở cửa: {p.opening_time} - {p.closing_time} ({p.open_days})')
-        blocks.append('\n'.join(lines))
+    def index_place(self, place: Place):
+        doc = self.build_place_document(place=place)
+        vector = embedding_text(text=doc)
+        self.embedding_repo.replace_place_chunk(
+            place_id=place.id,
+            chunk_text=doc, embedding=vector,
+            metadata={'name': place.name, 'ward': place.ward}
+        )
 
-    return '\n\n'.join(blocks)
+        self.embedding_repo.commit()
+        return 1
 
+    def reindex_all_places(self, batch_size: int = 50):
+        places = self.embedding_repo.get_all_places()
+        count = 0
+        for i in range(0, len(places), batch_size):
+            batch = places[i:i + batch_size]
+            docs = [self.build_place_document(p) for p in batch]
+            vectors = embedding_texts(docs)
+            for p, doc, vec in zip(batch, docs, vectors):
+                self.embedding_repo.replace_place_chunk(
+                    place_id=p.id, chunk_text=doc, embedding=vec,
+                    metadata={'name': p.name, 'ward': p.ward}
+                )
+                count += 1
 
-def answer_question(db: Session, query: str,
-                    top_k: int | None = None,
-                    user_profile: str | None = None,
-                    ward: str | None = None,
-                    max_price: int | None = None,
-                    min_rating: float | None = None,
-                    tag_ids: list[int] | None = None,
-                    age_group: 'AgeGroup |None' = None) -> dict:
-    results = _search_similar_places(
-        db=db, query=query, top_k=top_k, ward=ward, max_price=max_price,
-        min_rating=min_rating, tag_ids=tag_ids, age_group=age_group
-    )
+            self.embedding_repo.commit()
 
-    places = [r['place'] for r in results]
+        return count
 
-    if not places:
-        return {
-            'answer': 'Xin lỗi, mình chưa tìm thấy địa điểm nào phù hợp với yêu cầu của bạn.',
-            'places': []
-        }
+    def _search_similar_places(self, query: str, top_k: int | None = None,
+                               ward: str | None = None,
+                               max_price: int | None = None,
+                               min_rating: float | None = None,
+                               tag_ids: list[int] | None = None,
+                               age_group: AgeGroup | None = None):
+        top_k = top_k or settings.RAG_TOP_K
+        query_vector = embedding_text(query)
 
-    context = build_context(places=places)
-    user_prompt = ''
-    if user_profile:
-        user_prompt += f'Hồ sơ người dùng: {user_profile}\n\n'
+        rows = self.embedding_repo.search_similar_places(
+            query_vector, top_k=top_k, ward=ward, max_price=max_price,
+            min_rating=min_rating, tag_ids=tag_ids, age_group=age_group
+        )
 
-    user_prompt += f'Câu hỏi: {query}\n\nDANH SÁCH ĐỊA ĐIỂM:\n{context}'
-    answer = chat_completion(_SYSTEM_PROMPT, user_prompt)
-    return {'answer': answer, 'places': places}
+        return [
+            {'place': place, 'distance': float(dist), 'similarity': 1 - float(dist)}
+            for place, dist in rows
+        ]
 
+    def build_context(self, places: list):
+        blocks = []
+        for i, p in enumerate(places, 1):
+            lines = [f'[{i}] {p.name} - {p.ward}']
+            if p.description:
+                desc = p.description[:400]
+                lines.append(f'Mô tả: {desc}')
+            cates = [pc.category.name for pc in p.categories if pc.category]
 
-def parse_json(raw: str):
-    text = (raw or '').strip()
-    if text.startswith('```'):
-        text = text.strip('`')
-        if text.lstrip().lower().startswith('json'):
-            text = text.lstrip()[4:]
-
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        start, end = text.find('{'), text.rfind('}')
-        if start != -1 and end != -1:
+            if cates:
+                lines.append(f'Danh mục: {", ".join(cates)}')
             try:
-                return json.loads(text[start:end + 1])
-            except json.JSONDecodeError:
-                raise ValueError('AI trả về json không hợp lệ')
-        raise ValueError('AI trả về json không hợp lệ')
+                pmax = int(p.price_max)
+                if pmax > 0:
+                    lines.append(f'Giá tham khảo: {int(p.price_min):,} - {pmax:,} VND')
+            except (TypeError, ValueError):
+                pass
 
+            if p.average_rating:
+                lines.append(f'Đánh giá: {p.average_rating}/5 ({p.total_reviews} lượt)')
 
-def parse_time(value):
-    if not value:
-        return None
-    try:
-        parts = str(value).split(':')
-        return time(hour=int(parts[0]), minute=int(parts[1]) if len(parts) > 1 else 0)
-    except (ValueError, IndexError):
-        return None
+            lines.append(f'Giờ mở cửa: {p.opening_time} - {p.closing_time} ({p.open_days})')
+            blocks.append('\n'.join(lines))
 
+        return '\n\n'.join(blocks)
 
-def generate_itinerary_plan(db: Session, query: str, duration_day: int, num_people: int | None = None,
-                            ward: str | None = None, max_price: int | None = None):
-    duration_day = max(1, min(duration_day or 1, 7))
+    def answer_question(self, query: str,
+                        top_k: int | None = None,
+                        user_profile: str | None = None,
+                        ward: str | None = None,
+                        max_price: int | None = None,
+                        min_rating: float | None = None,
+                        tag_ids: list[int] | None = None,
+                        age_group: 'AgeGroup |None' = None) -> dict:
+        results = self._search_similar_places(
+            query=query, top_k=top_k, ward=ward, max_price=max_price,
+            min_rating=min_rating, tag_ids=tag_ids, age_group=age_group
+        )
 
-    top_k = duration_day * 4 + 2
+        places = [r['place'] for r in results]
 
-    results=_search_similar_places(
-        db=db, query=query, top_k=top_k, ward=ward, max_price=max_price
-    )
+        if not places:
+            return {
+                'answer': 'Xin lỗi, mình chưa tìm thấy địa điểm nào phù hợp với yêu cầu của bạn.',
+                'places': []
+            }
 
-    places = [r['place'] for r in results]
+        context = self.build_context(places=places)
+        user_prompt = ''
+        if user_profile:
+            user_prompt += f'Hồ sơ người dùng: {user_profile}\n\n'
 
-    if not places:
-        raise ValueError('Không tìm thấy địa điểm phù hợp để lập lịch trình')
+        user_prompt += f'Câu hỏi: {query}\n\nDANH SÁCH ĐỊA ĐIỂM:\n{context}'
+        answer = self.chat_completion(_SYSTEM_PROMPT, user_prompt)
+        return {'answer': answer, 'places': places}
 
-    valid_ids={p.id for p in places}
+    def parse_json(self, raw: str):
+        text = (raw or '').strip()
+        if text.startswith('```'):
+            text = text.strip('`')
+            if text.lstrip().lower().startswith('json'):
+                text = text.lstrip()[4:]
 
-    context = '\n'.join(
-        f'place_id={p.id} | {p.name} ({p.ward}) - {(p.description or '')}' for p in places
-    )
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            start, end = text.find('{'), text.rfind('}')
+            if start != -1 and end != -1:
+                try:
+                    return json.loads(text[start:end + 1])
+                except json.JSONDecodeError:
+                    raise ValueError('AI trả về json không hợp lệ')
+            raise ValueError('AI trả về json không hợp lệ')
 
-    user_prompt=(
-        f'Yêu cầu: {query}\nSố ngày: {duration_day}\n\n'
-        f'DANH SÁCH ĐỊA ĐIỂM (chỉ dùng place_id này): \n{context}'
-    )
+    def parse_time(self, value):
+        if not value:
+            return None
+        try:
+            parts = str(value).split(':')
+            return time(hour=int(parts[0]), minute=int(parts[1]) if len(parts) > 1 else 0)
+        except (ValueError, IndexError):
+            return None
 
-    plan = parse_json(chat_completion(sys_prompt=_ITINERARY_SYSTEM_PROMPT, user_prompt=user_prompt))
-    if not isinstance(plan, dict):
-        raise ValueError('AI trả về định dạng không hợp lệ')
+    def generate_itinerary_plan(self, query: str, duration_day: int, num_people: int | None = None,
+                                ward: str | None = None, max_price: int | None = None):
+        duration_day = max(1, min(duration_day or 1, 7))
 
+        top_k = duration_day * 4 + 2
 
-    items: list[ItineraryItemCreate]=[]
+        results = self._search_similar_places(
+            query=query, top_k=top_k, ward=ward, max_price=max_price
+        )
 
-    for day in plan.get('days',[]):
-        day_number=day.get('day_number',1)
-        for order, it in enumerate(day.get('items',[]), start=1):
-            pid = it.get('place_id')
-            if pid not in valid_ids:
-                continue
+        places = [r['place'] for r in results]
 
-            items.append(ItineraryItemCreate(
-                place_id=pid, day_number=day_number, start_time=parse_time(it.get('start_time')),
-                note=it.get('note'), transport_mode=it.get('transport_mode'), sort_order=order
-            ))
+        if not places:
+            raise ValueError('Không tìm thấy địa điểm phù hợp để lập lịch trình')
 
-    if not items:
-        raise ValueError('Không tạo được lịch trình từ kết quả AI')
+        valid_ids = {p.id for p in places}
 
-    return ItineraryCreate(
-        title=plan.get('title') or query[:100],
-        description=plan.get('description'),
-        num_people=num_people,
-        items=items
-    )
+        context = '\n'.join(
+            f'place_id={p.id} | {p.name} ({p.ward}) - {(p.description or '')}' for p in places
+        )
+
+        user_prompt = (
+            f'Yêu cầu: {query}\nSố ngày: {duration_day}\n\n'
+            f'DANH SÁCH ĐỊA ĐIỂM (chỉ dùng place_id này): \n{context}'
+        )
+
+        plan = self.parse_json(self.chat_completion(sys_prompt=_ITINERARY_SYSTEM_PROMPT, user_prompt=user_prompt))
+        if not isinstance(plan, dict):
+            raise ValueError('AI trả về định dạng không hợp lệ')
+
+        items: list[ItineraryItemCreate] = []
+
+        for day in plan.get('days', []):
+            day_number = day.get('day_number', 1)
+            for order, it in enumerate(day.get('items', []), start=1):
+                pid = it.get('place_id')
+                if pid not in valid_ids:
+                    continue
+
+                items.append(ItineraryItemCreate(
+                    place_id=pid, day_number=day_number, start_time=self.parse_time(it.get('start_time')),
+                    note=it.get('note'), transport_mode=it.get('transport_mode'), sort_order=order
+                ))
+
+        if not items:
+            raise ValueError('Không tạo được lịch trình từ kết quả AI')
+
+        return ItineraryCreate(
+            title=plan.get('title') or query[:100],
+            description=plan.get('description'),
+            num_people=num_people,
+            items=items
+        )

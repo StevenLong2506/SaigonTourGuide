@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
 
 from app.core.security import verify_password, create_access_token
 from app.repository.token_black_list_repository import TokenBlackListRepository
@@ -10,10 +9,9 @@ from app.schemas.user import UserRegister, UserLogin
 
 
 class AuthService:
-    def __init__(self, db: Session):
-        self.db = db
-        self.user_repo = UserRepository(db)
-        self.blacklist_repo = TokenBlackListRepository(db)
+    def __init__(self, user_repo: UserRepository, blacklist_repo: TokenBlackListRepository):
+        self.user_repo = user_repo
+        self.blacklist_repo = blacklist_repo
 
     def register(self, payload: UserRegister):
         if self.user_repo.get_by_username(payload.username):

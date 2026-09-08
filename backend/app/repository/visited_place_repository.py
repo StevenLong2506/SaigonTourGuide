@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from app.models import VisitedPlace
 from app.models.enums import VisitedPlaceSource
 from app.repository.base import BaseRepository
-from app.repository.place_repository import PlaceRepository
 from app.schemas.visited_place import VisitedPlaceCreate
 
 
@@ -30,8 +29,4 @@ class VisitedPlaceRepository(BaseRepository[VisitedPlace]):
     def delete_visited(self, visited: VisitedPlace) -> None:
         self.delete(visited)
 
-    def to_response_data(self, visited: VisitedPlace) -> dict:
-        place_repo = PlaceRepository(self.db)
-        data = self.model_columns_to_dict(visited)
-        data['place'] = place_repo.to_response_data(visited.place)
-        return data
+

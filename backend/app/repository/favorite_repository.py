@@ -2,7 +2,6 @@ from sqlalchemy.orm import Session
 
 from app.models import Favorite
 from app.repository.base import BaseRepository
-from app.repository.place_repository import PlaceRepository
 
 
 class FavoriteRepository(BaseRepository[Favorite]):
@@ -21,9 +20,3 @@ class FavoriteRepository(BaseRepository[Favorite]):
 
     def delete_favorite(self, favorite: Favorite) -> None:
         self.delete(favorite)
-
-    def to_response_data(self, favorite: Favorite) -> dict:
-        place_repo = PlaceRepository(self.db)
-        data = self.model_columns_to_dict(favorite)
-        data['place'] = place_repo.to_response_data(favorite.place)
-        return data

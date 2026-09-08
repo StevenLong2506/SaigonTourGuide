@@ -1,5 +1,4 @@
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
 
 from app import settings
 from app.models import User
@@ -7,7 +6,7 @@ from app.models.enums import MessageRole
 from app.repository.chat_repository import ChatRepository
 from app.repository.user_repository import UserRepository
 from app.schemas.chat import ChatRequest
-from app.service import rag_service
+from app.service.rag_service import RagService
 
 
 def _build_profile_text(user: User):
@@ -31,10 +30,10 @@ def _build_profile_text(user: User):
 
 
 class ChatService:
-    def __init__(self, db: Session):
-        self.db = db
-        self.repo = ChatRepository(db)
-        self.user_repo = UserRepository(db)
+    def __init__(self, repo: ChatRepository, user_repo: UserRepository, rag_service: RagService):
+        self.repo = repo
+        self.user_repo = user_repo
+        self.rag_service = rag_service
 
     def send_message(self, payload: ChatRequest, user_id: int):
         if payload.session_id:
@@ -49,10 +48,8 @@ class ChatService:
         user = self.user_repo.get_full(user_id)
         profile_text = _build_profile_text(user)
         try:
-            result = rag_service.answer_question(
-                db=self.db, query=payload.message, user_profile=profile_text, ward=payload.ward,
-                max_price=payload.max_price,
-            )
+            result = self.rag_service.answer_question(query=payload.message, user_profile=profile_text, ward=payload.ward,
+                                                max_price=payload.max_price)
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

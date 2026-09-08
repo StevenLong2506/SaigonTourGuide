@@ -1,14 +1,19 @@
-from fastapi import HTTPException, Depends
-from starlette import status
+from fastapi import HTTPException, status
 
-from app.api.deps import get_current_user
 from app.models import User
-from app.repository.category_repository import CategoryRepository
 
+from app.repository.category_repository import CategoryRepository
 from app.repository.interest_tag_repository import InterestTagRepository
 from app.repository.place_repository import PlaceRepository
 from app.repository.review_repository import ReviewRepository
 from app.repository.user_repository import UserRepository
+
+def get_category_or_404(repo: CategoryRepository, cate_id:int):
+    cate = repo.get_by_id(cate_id)
+    if cate is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail='Danh mục không tồn tại')
+    return cate
 
 
 def get_place_or_404(repo: PlaceRepository, place_id: int):
@@ -35,19 +40,11 @@ def get_review_or_404(repo: ReviewRepository, review_id: int):
     return review
 
 
-def get_own_review_or_403(repo: ReviewRepository, review_id: int, user: User = Depends(get_current_user)):
+def get_own_review_or_403(repo: ReviewRepository, review_id: int, user: User):
     review = get_review_or_404(repo, review_id)
     if review.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Bạn không có quyền với đánh giá này')
     return review
-
-
-def get_category_or_404(repo: CategoryRepository, cate_id:int):
-    cate = repo.get_by_id(cate_id)
-    if cate is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail='Danh mục không tồn tại')
-    return cate
 
 
 def get_user_or_404(repo: UserRepository, user_id:int):
