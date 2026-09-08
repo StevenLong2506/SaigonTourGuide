@@ -1,15 +1,13 @@
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
 
-from app.api.helpers import get_tags_or_404
+from app.service.helpers import get_tags_or_404
 from app.repository.interest_tag_repository import InterestTagRepository
 from app.schemas.interest_tag import InterestTagCreate, InterestTagUpdate
 
 
 class InterestTagService:
-    def __init__(self, db: Session):
-        self.db = db
-        self.repo = InterestTagRepository(db)
+    def __init__(self, repo: InterestTagRepository):
+        self.repo = repo
 
     def list_all(self, skip: int = 0, limit: int = 100):
         return self.repo.get_all_with_usage(skip=skip, limit=limit)

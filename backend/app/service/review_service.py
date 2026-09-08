@@ -1,22 +1,21 @@
 from datetime import date
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy.orm import Session
 
-from app.api.helpers import get_place_or_404, get_review_or_404, get_own_review_or_403
+from app.service.helpers import get_place_or_404, get_review_or_404, get_own_review_or_403
 from app.models import User
 from app.models.enums import ReviewStatus
 from app.repository.place_repository import PlaceRepository
 from app.repository.review_repository import ReviewRepository
 from app.schemas.review import ReviewCreate, ReviewUpdate, ReviewStatusUpdate
-from app.service.upload_image_service import upload_review_images
+from app.service.upload_image_service import UploadImageService
 
 
 class ReviewService:
-    def __init__(self, db: Session):
-        self.db = db
-        self.repo = ReviewRepository(db)
-        self.place_repo = PlaceRepository(db)
+    def __init__(self, repo: ReviewRepository, place_repo: PlaceRepository, upload_service: UploadImageService):
+        self.repo = repo
+        self.place_repo = place_repo
+        self.upload_service=upload_service
 
     # ---- Public / self-service ----
     def create(self, *, place_id: int, rating: int, title: str | None, content: str | None,
@@ -25,7 +24,7 @@ class ReviewService:
         if self.repo.get_by_place_and_user(place_id=place_id, user_id=user_id):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Bạn đã đánh giá địa điểm này')
 
-        imgs = upload_review_images(files=files, place_id=place_id) if files else []
+        imgs = self.upload_service.upload_review_images(files=files, place_id=place_id) if files else []
         payload = ReviewCreate(rating=rating, title=title, content=content, visit_date=visit_date, images=imgs)
 
         return self.repo.create_review(payload=payload, place_id=place_id, user_id=user_id)

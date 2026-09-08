@@ -1,19 +1,17 @@
 import secrets
-
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
 
 from app.repository.itinerary_repository import ItineraryRepository
 from app.repository.trip_request_repository import TripRequestRepository
 from app.schemas.itinerary import ItineraryCreate, ItineraryUpdate, TripRequestCreate
-from app.service import rag_service
+from app.service.rag_service import RagService
 
 
 class ItineraryService:
-    def __init__(self, db: Session):
-        self.db = db
-        self.repo = ItineraryRepository(db)
-        self.trip_repo = TripRequestRepository(db)
+    def __init__(self, repo: ItineraryRepository, trip_repo: TripRequestRepository, rag_service: RagService):
+        self.repo = repo
+        self.trip_repo = trip_repo
+        self.rag_service = rag_service
 
     def create(self, user_id: int, data: ItineraryCreate):
         try:
@@ -76,8 +74,8 @@ class ItineraryService:
             user_id=user_id, raw_query=payload.raw_query, duration_day=payload.duration_day
         )
         try:
-            plan = rag_service.generate_itinerary_plan(
-                db=self.db, query=payload.raw_query, duration_day=payload.duration_day, num_people=payload.num_people,
+            plan = self.rag_service.generate_itinerary_plan(
+                query=payload.raw_query, duration_day=payload.duration_day, num_people=payload.num_people,
                 ward=payload.ward, max_price=payload.max_price
             )
             return self.repo.create_itinerary(user_id=user_id, data=plan, trip_request_id=trip_req.id)

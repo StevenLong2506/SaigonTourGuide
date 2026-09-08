@@ -1,18 +1,17 @@
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy.orm import Session
 
-from app.api.helpers import get_user_or_404
+from app.service.helpers import get_user_or_404
 from app.core.security import verify_password
 from app.models import User
 from app.repository.user_repository import UserRepository
 from app.schemas.user import UserUpdate, UserTravelProfileUpdate, UserStatusUpdate
-from app.service.upload_image_service import upload_user_avatar
+from app.service.upload_image_service import UploadImageService
 
 
 class UserService:
-    def __init__(self, db: Session):
-        self.db = db
-        self.repo = UserRepository(db)
+    def __init__(self, repo: UserRepository, upload_service: UploadImageService):
+        self.repo = repo
+        self.upload_service=upload_service
 
     def update_profile(self, current_user: User, payload: UserUpdate):
         if payload.email and payload.email != current_user.email:
@@ -41,7 +40,7 @@ class UserService:
         return self.repo.set_travel_profile(current_user, payload)
 
     def upload_avatar(self, current_user: User, file: UploadFile):
-        return upload_user_avatar(db=self.db, user=current_user, file=file)
+        return self.upload_service.upload_user_avatar(user=current_user, file=file)
 
     # ---- Admin ----
     def admin_list(self, skip: int = 0, limit: int = 100):
