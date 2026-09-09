@@ -2,6 +2,8 @@
 
 Hệ thống gợi ý địa điểm du lịch tích hợp AI cho TP. Hồ Chí Minh: chatbot tư vấn theo phương pháp RAG (Retrieval-Augmented Generation) và tính năng tự động tạo lịch trình du lịch (AI itinerary generation). Dự án là đồ án ngành của sinh viên Trường Đại học Mở TP.HCM.
 
+RAG chatbot hoạt động theo luồng: câu hỏi người dùng → tạo embedding bằng SentenceTransformer → truy vấn tương đồng (vector similarity search) trên bảng địa điểm đã được embed trong PostgreSQL/pgvector → chỉ lấy các địa điểm liên quan làm ngữ cảnh → gửi cho Gemini sinh câu trả lời tiếng Việt.
+
 Hệ thống gồm 3 thành phần độc lập, giao tiếp qua REST API:
 
 | Thành phần | Vai trò | Công nghệ |
@@ -13,7 +15,6 @@ Hệ thống gồm 3 thành phần độc lập, giao tiếp qua REST API:
 ## Mục lục
 
 - [Tính năng chính](#tính-năng-chính)
-- [Kiến trúc tổng quan](#kiến-trúc-tổng-quan)
 - [Cấu trúc thư mục](#cấu-trúc-thư-mục)
 - [Yêu cầu môi trường](#yêu-cầu-môi-trường)
 - [Cài đặt & chạy dự án](#cài-đặt--chạy-dự-án)
@@ -41,29 +42,8 @@ Hệ thống gồm 3 thành phần độc lập, giao tiếp qua REST API:
 - Tích hợp Google Gemini để sinh câu trả lời chatbot và lịch trình
 - Lưu ảnh qua Cloudinary
 
-## Kiến trúc tổng quan
 
-```
-                     ┌───────────────────┐
-                     │   Mobile App       │
-                     │   (Flutter)        │
-                     └─────────┬─────────┘
-                               │ REST / JWT
-                     ┌─────────▼─────────┐        ┌───────────────────┐
-                     │   Admin Web        │──────▶│   Backend API      │
-                     │   (Next.js)        │ REST   │   (FastAPI)        │
-                     └───────────────────┘        └─────────┬─────────┘
-                                                              │
-                                   ┌──────────────────────────┼──────────────────────────┐
-                                   ▼                          ▼                          ▼
-                         ┌─────────────────┐        ┌─────────────────┐        ┌─────────────────┐
-                         │  PostgreSQL      │        │  Google Gemini   │        │  Cloudinary      │
-                         │  + pgvector       │        │  (chat / RAG /   │        │  (lưu trữ ảnh)   │
-                         │                  │        │  sinh lịch trình)│        │                  │
-                         └─────────────────┘        └─────────────────┘        └─────────────────┘
-```
 
-RAG chatbot hoạt động theo luồng: câu hỏi người dùng → tạo embedding bằng SentenceTransformer → truy vấn tương đồng (vector similarity search) trên bảng địa điểm đã được embed trong PostgreSQL/pgvector → chỉ lấy các địa điểm liên quan làm ngữ cảnh → gửi cho Gemini sinh câu trả lời tiếng Việt.
 
 ## Cấu trúc thư mục
 
@@ -173,4 +153,4 @@ Nếu không truyền `API_BASE_URL`, app mặc định gọi `http://localhost:
 |---|---|
 | `NEXT_PUBLIC_API_URL` | URL của backend API |
 
-> Các file `.env` chứa thông tin nhạy cảm, không commit lên git (đã được liệt kê trong `.gitignore`).
+
