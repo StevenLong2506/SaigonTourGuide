@@ -55,6 +55,9 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
   Future<void> _pickImages() async {
     final picked = await ImagePicker().pickMultiImage(imageQuality: 80);
     if (picked.isEmpty) return;
+    // Picker là UI của hệ điều hành — người dùng có thể thoát màn hình này
+    // trong lúc nó đang mở, khi đó State đã bị dispose.
+    if (!mounted) return;
     setState(() => _pickedImages.addAll(picked));
   }
 
@@ -66,7 +69,8 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
       lastDate: now,
       initialDate: now,
     );
-    if (picked != null) setState(() => _visitDate = picked);
+    if (picked == null || !mounted) return;
+    setState(() => _visitDate = picked);
   }
 
   Future<void> _submit() async {

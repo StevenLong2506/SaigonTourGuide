@@ -12,17 +12,38 @@ void main() {
 
   final apiClient = ApiClient();
   final authProvider = AuthProvider(apiClient);
+  final favoritesProvider = FavoritesProvider(apiClient);
+  final visitedPlacesProvider = VisitedPlacesProvider(apiClient);
 
   apiClient.onUnauthorized = authProvider.forceLogout;
+  authProvider.onLoggedOut = () {
+    favoritesProvider.reset();
+    visitedPlacesProvider.reset();
+  };
   authProvider.restoreSession();
 
-  runApp(MyApp(apiClient: apiClient, authProvider: authProvider));
+  runApp(
+    MyApp(
+      apiClient: apiClient,
+      authProvider: authProvider,
+      favoritesProvider: favoritesProvider,
+      visitedPlacesProvider: visitedPlacesProvider,
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
   final ApiClient apiClient;
   final AuthProvider authProvider;
-  const MyApp({super.key, required this.apiClient, required this.authProvider});
+  final FavoritesProvider favoritesProvider;
+  final VisitedPlacesProvider visitedPlacesProvider;
+  const MyApp({
+    super.key,
+    required this.apiClient,
+    required this.authProvider,
+    required this.favoritesProvider,
+    required this.visitedPlacesProvider,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -30,8 +51,8 @@ class MyApp extends StatelessWidget {
       providers: [
         Provider<ApiClient>.value(value: apiClient),
         ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
-        ChangeNotifierProvider<FavoritesProvider>(create: (_) => FavoritesProvider(apiClient)),
-        ChangeNotifierProvider<VisitedPlacesProvider>(create: (_)=> VisitedPlacesProvider(apiClient)),
+        ChangeNotifierProvider<FavoritesProvider>.value(value: favoritesProvider),
+        ChangeNotifierProvider<VisitedPlacesProvider>.value(value: visitedPlacesProvider),
       ],
       child: MaterialApp(
         title: 'Saigon Tour Guide',

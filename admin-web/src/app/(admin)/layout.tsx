@@ -23,7 +23,7 @@ const buildBreadcrumpItems = (pathname: string) => {
     const segments = pathname.split('/').filter(Boolean);
     const items = [{ title: <Link href='/'>Trang chủ</Link> }];
     let acc = '';
-    for (let seg of segments) {
+    for (const seg of segments) {
         acc += `/${seg}`;
         const isId = /^\d+$/.test(seg);
         const label = isId ? 'Chi tiết' : (BREADCRUMB_LABELS[seg] ?? seg);

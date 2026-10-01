@@ -31,5 +31,4 @@ class TokenBlackListRepository(BaseRepository[TokenBlackList]):
            self.db.query(TokenBlackList).filter(TokenBlackList.expires_at < now)
            .delete(synchronize_session=False)
        )
-       self.db.commit()
        return deleted

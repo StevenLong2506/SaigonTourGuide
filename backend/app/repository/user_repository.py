@@ -24,7 +24,7 @@ class UserRepository(BaseRepository[User]):
 
     def get_full(self, user_id: int) -> User | None:
         return (
-            self.db.query(User).options(
+            self.db.query(User).execution_options(populate_existing=True).options(
                 selectinload(User.travel_profile),
                 selectinload(User.interests).selectinload(UserInterest.tag),
             )
@@ -84,8 +84,7 @@ class UserRepository(BaseRepository[User]):
         for tag_id, priority in dedup.items():
             self.db.add(UserInterest(user_id=user.id, tag_id=tag_id, priority=priority))
 
-        self.db.commit()
-
+        self.db.flush()
         return self.get_full(user.id)
 
     def set_travel_profile(self, user: User, payload: UserTravelProfileUpdate) -> UserTravelProfile:
@@ -97,8 +96,7 @@ class UserRepository(BaseRepository[User]):
         data = payload.model_dump(exclude_unset=True)
         for field, value in data.items():
             setattr(profile,field,value)
-
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(profile)
         return profile
 

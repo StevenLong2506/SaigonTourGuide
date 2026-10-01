@@ -36,9 +36,6 @@ class PlaceEmbeddingRepository(BaseRepository[PlaceEmbedding]):
     def count(self):
         return self.db.query(PlaceEmbedding).count()
 
-    def commit(self):
-        self.db.commit()
-
 
     def search_similar_places(self, query_embedding: list[float],
                               top_k:int=5,
@@ -57,7 +54,7 @@ class PlaceEmbeddingRepository(BaseRepository[PlaceEmbedding]):
              )
 
         if ward:
-            q=q.filter_by(ward=ward)
+            q=q.filter(Place.ward == ward)
         if max_price is not None:
             q=q.filter(Place.price_min <= max_price)
         if min_rating is not None:

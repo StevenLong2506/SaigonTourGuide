@@ -5,7 +5,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { UserResponse } from '@/types/user';
 import { UserOutlined } from '@ant-design/icons';
-import { Alert, Avatar, Card, Drawer, Input, message, Popconfirm, Space, Switch, Tag, Typography } from 'antd';
+import { Avatar, Card, Drawer, Input, message, Popconfirm, Space, Switch, Tag, Typography } from 'antd';
 import Table, { ColumnsType } from 'antd/es/table';
 import { useEffect, useState } from 'react';
 
@@ -124,7 +124,7 @@ export default function UsersPage() {
                     </span>
                 );
             }
-        }, ,
+        }, 
         {
             title: 'Ngày tạo',
             dataIndex: 'created_at',

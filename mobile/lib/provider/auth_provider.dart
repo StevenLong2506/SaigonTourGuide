@@ -11,6 +11,11 @@ class AuthProvider extends ChangeNotifier {
   bool loading = true;
   bool skippedOnboarding = false;
 
+  /// Được gọi sau mỗi lần đăng xuất (kể cả khi bị 401 đá ra) để các provider
+  /// khác xoá dữ liệu của tài khoản cũ. Chúng nằm trên RootScreen nên không tự
+  /// bị dispose. Wire ở main().
+  void Function()? onLoggedOut;
+
   void skipOnboarding() {
     skippedOnboarding = true;
     notifyListeners();
@@ -184,6 +189,8 @@ class AuthProvider extends ChangeNotifier {
   Future<void> forceLogout() async {
     await TokenStorage.clear();
     user = null;
+    skippedOnboarding = false;
+    onLoggedOut?.call();
     notifyListeners();
   }
 

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:saigon_tour_guide/core/api_client.dart';
@@ -68,6 +69,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           'message': text,
           if (_sessionId != null) 'session_id': _sessionId,
         },
+        options: Options(receiveTimeout: ApiClient.aiTimeout),
       );
       if (!mounted) return;
       final data = res.data as Map<String, dynamic>;

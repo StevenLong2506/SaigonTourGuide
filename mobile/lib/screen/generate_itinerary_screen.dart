@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:saigon_tour_guide/core/api_client.dart';
@@ -35,6 +36,7 @@ class _GenerateItineraryScreenState extends State<GenerateItineraryScreen> {
           'raw_query': _queryController.text.trim(),
           'duration_day': _durationDay,
         },
+        options: Options(receiveTimeout: ApiClient.aiTimeout),
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {

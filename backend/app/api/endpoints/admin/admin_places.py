@@ -14,9 +14,10 @@ def admin_list_places(service: PlaceServiceDep, skip: int = 0, limit: int = Quer
                       place_status: PlaceStatus | None = None,
                       ward: str | None = None,
                       category_id: int | None = None,
+                      keyword: str|None=None,
                       admin: User = Depends(get_current_admin)):
     return service.admin_list(skip=skip, limit=limit, place_status=place_status, ward=ward,
-                                       category_id=category_id)
+                                       category_id=category_id, keyword=keyword)
 
 
 @router.post('/admin/reindex')

@@ -24,6 +24,11 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
 
+  /// Debounce không ngăn được 2 request chồng nhau khi gõ nhanh. Mỗi lần gọi
+  /// tăng số này lên; response về mà số đã cũ thì bỏ qua, tránh kết quả của
+  /// từ khoá cũ ghi đè lên kết quả mới hơn.
+  int _requestId = 0;
+
   void _onSearchChanged() {
     setState(() {});
     _debounce?.cancel();
@@ -47,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadPlaces({String? query}) async {
+    final reqId = ++_requestId;
     setState(() {
       _loading = true;
       _error = null;
@@ -65,15 +71,15 @@ class _HomeScreenState extends State<HomeScreen> {
       final items = (data['items'] as List)
           .map((e) => PlaceSummary.fromJson(e as Map<String, dynamic>))
           .toList();
-      if (!mounted) return;
+      if (!mounted || reqId != _requestId) return;
       setState(() => _places = items);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || reqId != _requestId) return;
       setState(() {
         _error = getErrorMessage(e);
       });
     } finally {
-      if (mounted) {
+      if (mounted && reqId == _requestId) {
         setState(() {
           _loading = false;
         });

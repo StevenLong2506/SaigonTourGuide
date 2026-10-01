@@ -25,6 +25,5 @@ class ChatRepository(BaseRepository[ChatSession]):
 
     def touch_session(self, session: ChatSession):
         session.updated_at=func.now()
-        self.db.commit()
 
 

@@ -1,17 +1,20 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
-
 from app.core.security import verify_password, create_access_token
+from app.db.uow import UnitOfWork
 from app.repository.token_black_list_repository import TokenBlackListRepository
 from app.repository.user_repository import UserRepository
 from app.schemas.user import UserRegister, UserLogin
 
+logger = logging.getLogger(__name__)
 
 class AuthService:
-    def __init__(self, user_repo: UserRepository, blacklist_repo: TokenBlackListRepository):
+    def __init__(self, user_repo: UserRepository, blacklist_repo: TokenBlackListRepository, uow: UnitOfWork):
         self.user_repo = user_repo
         self.blacklist_repo = blacklist_repo
+        self.uow = uow
 
     def register(self, payload: UserRegister):
         if self.user_repo.get_by_username(payload.username):
@@ -20,9 +23,11 @@ class AuthService:
             raise HTTPException(status_code=400, detail='Email đã tồn tại')
 
         try:
-            return self.user_repo.create_user(payload)
+            with self.uow.transaction():
+                user = self.user_repo.create_user(payload)
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        return user
 
     def login(self, payload: UserLogin):
         user = self.user_repo.get_by_username(payload.identifier) or self.user_repo.get_by_email(payload.identifier)
@@ -44,8 +49,14 @@ class AuthService:
         expires_at = (datetime.fromtimestamp(exp, tz=timezone.utc).replace(tzinfo=None) if exp
                      else datetime.now(timezone.utc).replace(tzinfo=None))
 
-        self.blacklist_repo.revoke(jti=jti, user_id=int(token_payload['sub']), expires_at=expires_at)
-        self.blacklist_repo.purge_expired()
+        with self.uow.transaction():
+            self.blacklist_repo.revoke(jti=jti, user_id=int(token_payload['sub']), expires_at=expires_at)
+
+        try:
+            with self.uow.transaction():
+                self.blacklist_repo.purge_expired()
+        except Exception:
+            logger.exception('Dọn token hết hạn thât bại')
 
         return {'message': 'Đăng xuất thành công'}
 

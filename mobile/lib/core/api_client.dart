@@ -3,6 +3,11 @@ import 'package:saigon_tour_guide/core/config.dart';
 import 'package:saigon_tour_guide/core/token_storage.dart';
 
 class ApiClient{
+  /// Các endpoint chạy RAG (embedding + gọi Gemini) mất lâu hơn hẳn request
+  /// thường, vượt xa receiveTimeout 10s bên dưới. Dùng kèm `Options` cho
+  /// /chat và /itineraries/generate, đừng nới timeout mặc định của cả app.
+  static const aiTimeout = Duration(minutes: 3);
+
   final Dio dio;
   void Function()? onUnauthorized;
 

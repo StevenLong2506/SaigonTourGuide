@@ -63,7 +63,7 @@ class ReviewRepository(BaseRepository[Review]):
         if place:
             place.average_rating = round(avg_rating, 1) if avg_rating else 0
             place.total_reviews = total
-            self.db.commit()
+            self.db.flush()
 
     def set_status(self, review: Review, status: ReviewStatus) -> Review:
        review.status=status

@@ -1,13 +1,15 @@
 from fastapi import HTTPException, status
 
+from app.db.uow import UnitOfWork
 from app.service.helpers import get_tags_or_404
 from app.repository.interest_tag_repository import InterestTagRepository
 from app.schemas.interest_tag import InterestTagCreate, InterestTagUpdate
 
 
 class InterestTagService:
-    def __init__(self, repo: InterestTagRepository):
+    def __init__(self, repo: InterestTagRepository, uow: UnitOfWork):
         self.repo = repo
+        self.uow = uow
 
     def list_all(self, skip: int = 0, limit: int = 100):
         return self.repo.get_all_with_usage(skip=skip, limit=limit)
@@ -18,13 +20,24 @@ class InterestTagService:
     def create(self, payload: InterestTagCreate):
         if self.repo.get_by_name(payload.name):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Tag đã tồn tại')
-        return self.repo.create_tag(payload)
+        try:
+            with self.uow.transaction():
+                tag = self.repo.create_tag(payload=payload)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+        return tag
 
     def update(self, tag_id: int, payload: InterestTagUpdate):
         tag = get_tags_or_404(self.repo, tag_id)
         if payload.name and payload.name != tag.name and self.repo.get_by_name(payload.name):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Tag đã tồn tại')
-        return self.repo.update_tag(tag, payload)
+        try:
+            with self.uow.transaction():
+                update_tag=self.repo.update_tag(tag, payload)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        return update_tag
 
     def delete(self, tag_id: int):
         tag = get_tags_or_404(self.repo, tag_id)
@@ -39,6 +52,6 @@ class InterestTagService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail=f'Tag đang được dùng {used_by_place} địa điểm')
 
-        self.repo.delete(tag)
-
+        with self.uow.transaction():
+            self.repo.delete(tag)
 
