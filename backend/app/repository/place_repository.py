@@ -14,7 +14,7 @@ class PlaceRepository(BaseRepository[Place]):
         super().__init__(Place, db)
 
     def query_full(self):
-        return self.db.query(Place).options(
+        return self.db.query(Place).execution_options(populate_existing=True).options(
             selectinload(Place.categories).selectinload(PlaceCategory.category),
             selectinload(Place.tags).selectinload(PlaceTag.tag),
             selectinload(Place.age_groups),
@@ -25,7 +25,8 @@ class PlaceRepository(BaseRepository[Place]):
         return self.query_full().filter_by(id=place_id).first()
 
     def list_full(self, skip: int = 0, limit: int = 100, category_id: int | None = None,
-                  status: PlaceStatus | None = None, ward: str | None = None, is_featured: bool | None = None):
+                  status: PlaceStatus | None = None, ward: str | None = None, is_featured: bool | None = None,
+                  keyword: str | None = None):
         q = self.query_full()
         if status is not None:
             q = q.filter_by(status=status)
@@ -39,6 +40,8 @@ class PlaceRepository(BaseRepository[Place]):
                 .where(and_(PlaceCategory.place_id == Place.id), PlaceCategory.category_id == category_id)
                 .exists()
             )
+        if keyword:
+            q = q.filter(Place.name.ilike(f'%{keyword}%'))
 
         return q.order_by(Place.created_at.desc()).offset(skip).limit(limit).all()
 
@@ -127,7 +130,6 @@ class PlaceRepository(BaseRepository[Place]):
 
         self.db.add(new_place)
         self.db.flush()
-
         for category_id in cate_ids:
             self.db.add(PlaceCategory(place_id=new_place.id, category_id=category_id))
 
@@ -140,8 +142,7 @@ class PlaceRepository(BaseRepository[Place]):
         for img in images:
             self.db.add(PlaceImage(place_id=new_place.id, img_url=img.img_url,
                                    caption=img.caption, is_primary=img.is_primary))
-
-        self.db.commit()
+        self.db.flush()
         return self.get_full(new_place.id)
 
     def _sync_categories(self, place: Place, category_ids: list[int]):
@@ -160,7 +161,7 @@ class PlaceRepository(BaseRepository[Place]):
             self.db.add(PlaceCategory(place_id=place.id, category_id=cate_id))
 
     def _sync_tags(self, place: Place, tags: list[PlaceTagCreate]):
-        new_tags = self.check_tags(tags=tags)
+        new_tags = self.check_tags(tags=[PlaceTagCreate(**t) for t in tags])
         old_tags = {pt.tag_id: pt for pt in place.tags}
         to_remove = set(old_tags) - set(new_tags)
         to_add = set(new_tags) - set(old_tags)
@@ -222,23 +223,24 @@ class PlaceRepository(BaseRepository[Place]):
         if age_groups is not None:
             self._sync_age_groups(place=place, age_groups=age_groups)
 
-        self.db.commit()
-
+        self.db.flush()
         return self.get_full(place.id)
 
     def set_status(self, place: Place, status: PlaceStatus) -> Place:
         place.status = status
-        self.db.commit()
+        self.db.flush()
         return self.get_full(place.id)
 
     def set_featured(self, place: Place, is_featured: bool) -> Place:
         place.is_featured = is_featured
-        self.db.commit()
+        self.db.flush()
         return self.get_full(place.id)
 
     def increment_view(self, place: Place) -> None:
-        place.total_views = (place.total_views or 0) + 1
-        self.db.commit()
+        self.db.query(Place).filter_by(id=place.id).update(
+            {Place.total_views: Place.total_views + 1}, synchronize_session=False
+        )
+        self.db.refresh(place, attribute_names=['total_views'])
 
     def get_image(self, place_id: int, img_id: int) -> PlaceImage | None:
         return self.db.query(PlaceImage).filter_by(id=img_id, place_id=place_id).first()
@@ -254,7 +256,7 @@ class PlaceRepository(BaseRepository[Place]):
                 has_primary = True
             self.db.add(PlaceImage(place_id=place.id, img_url=img.img_url,
                                    caption=img.caption, is_primary=make_primary))
-        self.db.commit()
+        self.db.flush()
         return self.get_full(place.id)
 
     def set_primary_image(self, place: Place, image: PlaceImage) -> Place:
@@ -262,7 +264,7 @@ class PlaceRepository(BaseRepository[Place]):
             {PlaceImage.is_primary: False}, synchronize_session=False
         )
         image.is_primary = True
-        self.db.commit()
+        self.db.flush()
         return self.get_full(place.id)
 
     def delete_image(self, place: Place, image: PlaceImage) -> Place:
@@ -273,8 +275,7 @@ class PlaceRepository(BaseRepository[Place]):
             nxt = (self.db.query(PlaceImage).filter_by(place_id=place.id).order_by(PlaceImage.id).first())
             if nxt:
                 nxt.is_primary = True
-
-        self.db.commit()
+        self.db.flush()
         return self.get_full(place.id)
 
     def to_response_data(self, place: Place) -> dict:
@@ -286,7 +287,6 @@ class PlaceRepository(BaseRepository[Place]):
         return data
 
     def to_summary_data(self, place: Place) -> dict:
-
 
         data = {
             'id': place.id, 'name': place.name, 'address': place.address, 'ward': place.ward,

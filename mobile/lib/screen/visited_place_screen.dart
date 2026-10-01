@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:saigon_tour_guide/core/api_client.dart';
 import 'package:saigon_tour_guide/core/date_formats.dart';
 import 'package:saigon_tour_guide/provider/visited_places_provider.dart';
 import 'package:saigon_tour_guide/screen/place_detail_screen.dart';
@@ -17,6 +18,20 @@ class _VisitedPlaceScreenState extends State<VisitedPlaceScreen>{
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if(mounted) context.read<VisitedPlacesProvider>().load();
     });
+  }
+
+  /// removeVisited() rethrow khi API lỗi — không bắt ở đây thì exception sẽ
+  /// thoát ra ngoài callback và người dùng cũng không biết vì sao item hiện lại.
+  Future<void> _removeVisited(int placeId) async {
+    try {
+      await context.read<VisitedPlacesProvider>().removeVisited(placeId);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(getErrorMessage(e))));
+      }
+    }
   }
 
   @override
@@ -53,7 +68,7 @@ class _VisitedPlaceScreenState extends State<VisitedPlaceScreen>{
                   title: Text(v.place.name),
                   subtitle: Text(v.visitedAt != null ? 'Ghé thăm ${AppDateFormat.display.format(v.visitedAt!)}' : v.place.ward),
                   trailing: IconButton(
-                    onPressed: () => context.read<VisitedPlacesProvider>().removeVisited(v.place.id), 
+                    onPressed: () => _removeVisited(v.place.id),
                     icon: Icon(Icons.delete_outline)
                   ),
                   onTap: () => Navigator.push(

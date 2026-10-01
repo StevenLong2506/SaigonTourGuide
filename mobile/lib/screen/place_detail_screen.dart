@@ -31,6 +31,10 @@ class _PlaceDetailState extends State<PlaceDetailScreen> {
   List<Review>? _reviews;
   bool _reviewsLoading = false;
 
+  /// _loadReviews() được gọi lại sau mỗi lần viết/sửa/xoá đánh giá nên có thể
+  /// chồng nhau — xem chú thích ở HomeScreen._requestId.
+  int _reviewsRequestId = 0;
+
   @override
   void initState() {
     super.initState();
@@ -79,19 +83,22 @@ class _PlaceDetailState extends State<PlaceDetailScreen> {
   }
 
   Future<void> _loadReviews() async {
+    final reqId = ++_reviewsRequestId;
     setState(() => _reviewsLoading = true);
     try {
       final res = await context.read<ApiClient>().dio.get(
         '/reviews/place/${widget.placeId}',
       );
-      if (!mounted) return;
+      if (!mounted || reqId != _reviewsRequestId) return;
       final items = (res.data as List)
           .map((e) => Review.fromJson(e as Map<String, dynamic>))
           .toList();
       setState(() => _reviews = items);
     } catch (_) {
     } finally {
-      if (mounted) setState(() => _reviewsLoading = false);
+      if (mounted && reqId == _reviewsRequestId) {
+        setState(() => _reviewsLoading = false);
+      }
     }
   }
 

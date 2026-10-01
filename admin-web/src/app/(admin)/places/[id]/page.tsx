@@ -171,13 +171,15 @@ export default function EditPlacePage() {
     }, [placeId]);
 
     useEffect(() => {
-        loadPlace();
+        void loadPlace();
         Promise.all([
             api.get<CategoryResponse[]>('/categories/', { params: { limit: 100 } }),
             api.get<TagResponse[]>('/tags/', { params: { limit: 100 } })
         ]).then(([catRes, tagRes]) => {
             setCates(catRes.data);
             setTags(tagRes.data);
+        }).catch((e) => {
+            message.error(getErrorMessage(e));
         });
     }, [loadPlace]);
 
@@ -193,7 +195,7 @@ export default function EditPlacePage() {
         setStatusUpdating(true);
         try {
             const { data } = await api.patch<PlaceResponse>(`/places/${placeId}/status`, { status });
-            setPlace(data);
+            setPlace(p => p && { ...p, status: data.status });
         }
         catch (e) {
             message.error(getErrorMessage(e));
@@ -207,7 +209,7 @@ export default function EditPlacePage() {
         try {
             setFeaturedUpdating(true);
             const { data } = await api.patch<PlaceResponse>(`/places/${placeId}/featured`, { is_featured });
-            setPlace(data);
+            setPlace(p => p && { ...p, is_featured: data.is_featured });
         }
         catch (e) {
             message.error(getErrorMessage(e));
@@ -218,9 +220,9 @@ export default function EditPlacePage() {
     }
 
     const onFinish = async (values: PlaceEditFormValues) => {
-        if(!originalValues) return;
+        if (!originalValues) return;
         const payload = buildUpdatePayload(originalValues, values);
-        if(Object.keys(payload).length===0){
+        if (Object.keys(payload).length === 0) {
             message.info('Không có thay đổi nào để lưu');
             return;
         }
@@ -490,7 +492,7 @@ export default function EditPlacePage() {
                     {place.images.map((img) => (
                         <Col key={img.id}>
                             <div style={{ textAlign: 'center' }}>
-                                <Image src={img.img_url} width={120} height={90} style={{ objectFit: 'cover' }} />
+                                <Image src={img.img_url} alt={img.caption ?? `Ảnh địa điểm ${place.name}`} width={120} height={90} style={{ objectFit: 'cover' }} />
                                 <div style={{ marginTop: 4 }}>
                                     {img.is_primary ? (
                                         <Tag color='blue'>Đại diện</Tag>

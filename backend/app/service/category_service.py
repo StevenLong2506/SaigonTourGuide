@@ -1,5 +1,6 @@
 from fastapi import HTTPException, status
 
+from app.db.uow import UnitOfWork
 from app.service.helpers import get_category_or_404
 from app.repository.category_repository import CategoryRepository
 from app.schemas.category import CategoryCreate, CategoryUpdate
@@ -7,8 +8,9 @@ from app.schemas.category import CategoryCreate, CategoryUpdate
 
 
 class CategoryService:
-    def __init__(self, repo: CategoryRepository):
+    def __init__(self, repo: CategoryRepository, uow: UnitOfWork):
         self.repo = repo
+        self.uow = uow
 
     def list_all(self, skip: int = 0, limit: int = 100):
         return self.repo.get_all_with_place_count(skip=skip, limit=limit)
@@ -20,9 +22,12 @@ class CategoryService:
         if self.repo.get_category_by_name(payload.name):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Tên danh mục đã tồn tại')
         try:
-            return self.repo.create_category(payload)
+            with self.uow.transaction():
+                cate = self.repo.create_category(payload)
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+        return cate
 
     def update(self, category_id: int, payload: CategoryUpdate):
         cate = get_category_or_404(self.repo, category_id)
@@ -33,9 +38,11 @@ class CategoryService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Tên danh mục đã tồn tại')
 
         try:
-            return self.repo.update_category(cate, payload)
+            with self.uow.transaction():
+             cate = self.repo.update_category(category=cate, payload=payload)
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        return cate
 
     def delete(self, category_id: int):
         cate = get_category_or_404(self.repo, category_id)
@@ -48,4 +55,5 @@ class CategoryService:
         if has_children:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Danh mục còn danh mục con')
 
-        self.repo.delete(cate)
+        with self.uow.transaction():
+            self.repo.delete(cate)

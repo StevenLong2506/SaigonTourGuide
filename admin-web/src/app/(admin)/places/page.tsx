@@ -13,7 +13,7 @@ import { CategoryResponse } from "@/types/category";
 const STATUS_COLORS: Record<PlaceStatus, string> = {
     ACTIVE: "green",
     PENDING: "gold",
-    CLOSED: 'defailt'
+    CLOSED: 'default'
 };
 
 export default function PlacesPage() {
@@ -29,13 +29,21 @@ export default function PlacesPage() {
     const [togglingId, setTogglingId] = useState<number | null>(null);
 
 
-    const loadPlaces = async (params?: { ward?: string, categoryId?: number }) => {
-        const wardParam = params?.ward !== undefined ? params.ward : wardFilter;
-        const categoryParam = params?.categoryId !== undefined ? params.categoryId : catetoryFilter;
+    const loadPlaces = async (params?: { ward?: string, categoryId?: number, status?: PlaceStatus, keyword?: string }) => {
+        const wardParam = params && 'ward' in params ? params.ward : wardFilter;
+        const categoryParam = params && 'categoryId' in params ? params.categoryId : catetoryFilter;
+        const statusParam = params && 'status' in params ? params.status : statusFilter;
+        const keywordParam = params && 'keyword' in params ? params.keyword : search;
         try {
             setLoading(true);
             const { data } = await api.get<PlaceSummaryResponse[]>('/places/admin/all', {
-                params: { limit: 100, ward: ward || undefined, category_id: categoryParam || undefined }
+                params: {
+                    limit: 100,
+                    ward: wardParam || undefined,
+                    category_id: categoryParam || undefined,
+                    place_status: statusParam || undefined,
+                    keyword: keywordParam || undefined,
+                }
             });
 
             setPlace(data);
@@ -48,15 +56,16 @@ export default function PlacesPage() {
         }
     }
 
-
     useEffect(() => {
-        loadPlaces();
+        void loadPlaces();
         api.get<WardCountResponse[]>('/places/wards')
             .then(({ data }) => setWard(data))
             .catch(() => { });
         api.get<CategoryResponse[]>('/categories/', { params: { limit: 100 } })
             .then(({ data }) => setCates(data))
-            .catch(() => { });
+            .catch((e) => { 
+                message.error(getErrorMessage(e));
+            });
     }, []);
 
     const toggleFeatured = async (record: PlaceSummaryResponse) => {
@@ -86,10 +95,6 @@ export default function PlacesPage() {
             message.error(getErrorMessage(e));
         }
     }
-
-    const filtered = place
-        .filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
-        .filter((p) => !statusFilter || p.status === statusFilter);
 
     const columns: ColumnsType<PlaceSummaryResponse> = [
         {
@@ -150,6 +155,7 @@ export default function PlacesPage() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     style={{ width: 240 }}
+                    onSearch={(value) => loadPlaces({keyword: value})}
                     allowClear
                 />
 
@@ -160,7 +166,7 @@ export default function PlacesPage() {
                     value={wardFilter}
                     onChange={(value) => {
                         setWardFilter(value);
-                        loadPlaces({ward: value});
+                        loadPlaces({ ward: value });
                     }}
                     options={ward.map((d) => (
                         { label: `${d.ward} (${d.total})`, value: d.ward }
@@ -174,7 +180,7 @@ export default function PlacesPage() {
                     value={catetoryFilter}
                     onChange={(value) => {
                         setCategoryFilter(value);
-                        loadPlaces({categoryId: value});
+                        loadPlaces({ categoryId: value });
                     }}
                     options={cates.map((c) => (
                         { label: c.name, value: c.id }
@@ -187,7 +193,10 @@ export default function PlacesPage() {
                     allowClear
                     style={{ width: 160 }}
                     value={statusFilter}
-                    onChange={setStatusFilter}
+                    onChange={(value) => {
+                        setStatusFilter(value);
+                        loadPlaces({ status: value });
+                    }}
                     options={(Object.keys(PLACE_STATUS_LABELS) as PlaceStatus[]).map((s) => (
                         { label: PLACE_STATUS_LABELS[s], value: s }
                     ))}
@@ -196,7 +205,7 @@ export default function PlacesPage() {
                     Thêm địa điểm
                 </Button>
             </Space>
-            <Table rowKey='id' columns={columns} dataSource={filtered} loading={loading} />
+            <Table rowKey='id' columns={columns} dataSource={place} loading={loading} />
         </div>
     )
 }

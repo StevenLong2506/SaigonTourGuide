@@ -1,12 +1,17 @@
+import logging
+
+from app.db.uow import UnitOfWork
 from app.models.enums import TopPlaceOrderBy
 from app.repository.search_log_repository import SearchLogRepository
 from app.repository.stat_repository import StatRepository
 
+logger = logging.getLogger(__name__)
 
 class StatService:
-    def __init__(self, stat_repo: StatRepository, search_log_repo: SearchLogRepository):
+    def __init__(self, stat_repo: StatRepository, search_log_repo: SearchLogRepository, uow: UnitOfWork):
         self.search_log_repo = search_log_repo
         self.stat_repo = stat_repo
+        self.uow = uow
 
     def get_overview(self):
         return self.stat_repo.get_overview()
@@ -21,10 +26,11 @@ class StatService:
         if not query_text:
             return
         try:
-            self.search_log_repo.create_log(query_text=query_text, filters=filters, result_count=result_count,
+            with self.uow.transaction():
+                self.search_log_repo.create_log(query_text=query_text, filters=filters, result_count=result_count,
                                             user_id=user_id)
         except Exception:
-            pass
+            logger.exception('Ghi search log failed')
 
 
     def get_popular_keywords(self, limit:int=20, days:int|None=None):

@@ -7,6 +7,7 @@ from pyvi.ViTokenizer import ViTokenizer
 from sentence_transformers import SentenceTransformer
 
 from app import settings
+from app.db.uow import UnitOfWork
 from app.models import Place
 from app.models.enums import AgeGroup
 from app.repository.place_embedding_repository import PlaceEmbeddingRepository
@@ -33,6 +34,7 @@ _ITINERARY_SYSTEM_PROMPT = (
     '"note": "gợi ý ngắn", "transport_mode": "Xe máy"}]}]}'
 
 )
+NO_RESULT_ANSWER = 'Xin lỗi, mình chưa tìm thấy địa điểm nào phù hợp với yêu cầu của bạn.'
 
 embed_model = SentenceTransformer(
     settings.EMBEDDING_MODEL,
@@ -42,13 +44,13 @@ embed_model = SentenceTransformer(
 genai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
-def segment(text: str):
+def _segment(text: str):
     text = (text or '').replace('\n', ' ').strip()
     return ViTokenizer.tokenize(text)
 
 
-def embedding_text(text: str):
-    seg = segment(text)
+def _embedding_text(text: str):
+    seg = _segment(text)
     if not seg:
         raise ValueError('Không thể embedding chuỗi rỗng')
 
@@ -56,8 +58,8 @@ def embedding_text(text: str):
     return vector.tolist()
 
 
-def embedding_texts(texts: list[str]):
-    segs = [segment(t) for t in texts]
+def _embedding_texts(texts: list[str]):
+    segs = [_segment(t) for t in texts]
     segs = [s for s in segs if s]
     if not segs:
         return []
@@ -70,10 +72,9 @@ def embedding_texts(texts: list[str]):
 
 
 class RagService:
-    def __init__(self, embedding_repo: PlaceEmbeddingRepository):
-        self.embedding_repo= embedding_repo
-
-
+    def __init__(self, embedding_repo: PlaceEmbeddingRepository, uow: UnitOfWork):
+        self.embedding_repo = embedding_repo
+        self.uow = uow
 
     def chat_completion(self, sys_prompt: str, user_prompt: str):
         res = genai_client.models.generate_content(
@@ -118,14 +119,13 @@ class RagService:
 
     def index_place(self, place: Place):
         doc = self.build_place_document(place=place)
-        vector = embedding_text(text=doc)
+        vector = _embedding_text(text=doc)
         self.embedding_repo.replace_place_chunk(
             place_id=place.id,
             chunk_text=doc, embedding=vector,
             metadata={'name': place.name, 'ward': place.ward}
         )
 
-        self.embedding_repo.commit()
         return 1
 
     def reindex_all_places(self, batch_size: int = 50):
@@ -134,15 +134,14 @@ class RagService:
         for i in range(0, len(places), batch_size):
             batch = places[i:i + batch_size]
             docs = [self.build_place_document(p) for p in batch]
-            vectors = embedding_texts(docs)
-            for p, doc, vec in zip(batch, docs, vectors):
-                self.embedding_repo.replace_place_chunk(
-                    place_id=p.id, chunk_text=doc, embedding=vec,
-                    metadata={'name': p.name, 'ward': p.ward}
-                )
-                count += 1
-
-            self.embedding_repo.commit()
+            vectors = _embedding_texts(docs)
+            with self.uow.transaction():
+                for p, doc, vec in zip(batch, docs, vectors):
+                    self.embedding_repo.replace_place_chunk(
+                        place_id=p.id, chunk_text=doc, embedding=vec,
+                        metadata={'name': p.name, 'ward': p.ward}
+                    )
+                    count += 1
 
         return count
 
@@ -153,7 +152,7 @@ class RagService:
                                tag_ids: list[int] | None = None,
                                age_group: AgeGroup | None = None):
         top_k = top_k or settings.RAG_TOP_K
-        query_vector = embedding_text(query)
+        query_vector = _embedding_text(query)
 
         rows = self.embedding_repo.search_similar_places(
             query_vector, top_k=top_k, ward=ward, max_price=max_price,
@@ -191,35 +190,20 @@ class RagService:
 
         return '\n\n'.join(blocks)
 
-    def answer_question(self, query: str,
-                        top_k: int | None = None,
-                        user_profile: str | None = None,
-                        ward: str | None = None,
-                        max_price: int | None = None,
-                        min_rating: float | None = None,
-                        tag_ids: list[int] | None = None,
-                        age_group: 'AgeGroup |None' = None) -> dict:
-        results = self._search_similar_places(
-            query=query, top_k=top_k, ward=ward, max_price=max_price,
-            min_rating=min_rating, tag_ids=tag_ids, age_group=age_group
-        )
-
+    def prepare_answer(self, query: str, user_profile: str | None = None, ward: str | None = None,
+                         max_price: int | None = None) -> tuple[str | None, list]:
+        results = self._search_similar_places(query=query, ward=ward, max_price=max_price)
         places = [r['place'] for r in results]
-
         if not places:
-            return {
-                'answer': 'Xin lỗi, mình chưa tìm thấy địa điểm nào phù hợp với yêu cầu của bạn.',
-                'places': []
-            }
-
-        context = self.build_context(places=places)
-        user_prompt = ''
+            return None, []
+        prompt = ''
         if user_profile:
-            user_prompt += f'Hồ sơ người dùng: {user_profile}\n\n'
+            prompt += f'Hồ sơ người dùng: {user_profile}\n\n'
+        prompt += f'Câu hỏi: {query}\n\nDANH SÁCH ĐỊA ĐIỂM:\n{self.build_context(places=places)}'
+        return prompt, places
 
-        user_prompt += f'Câu hỏi: {query}\n\nDANH SÁCH ĐỊA ĐIỂM:\n{context}'
-        answer = self.chat_completion(_SYSTEM_PROMPT, user_prompt)
-        return {'answer': answer, 'places': places}
+    def complete_answer(self, prompt: str) -> str:
+        return self.chat_completion(_SYSTEM_PROMPT, prompt)
 
     def parse_json(self, raw: str):
         text = (raw or '').strip()
@@ -248,33 +232,24 @@ class RagService:
         except (ValueError, IndexError):
             return None
 
-    def generate_itinerary_plan(self, query: str, duration_day: int, num_people: int | None = None,
-                                ward: str | None = None, max_price: int | None = None):
+    def prepare_itinerary(self, query: str, duration_day: int, ward: str | None = None,
+                          max_price: int | None = None) -> tuple[str | None, set[int]]:
         duration_day = max(1, min(duration_day or 1, 7))
-
         top_k = duration_day * 4 + 2
-
-        results = self._search_similar_places(
-            query=query, top_k=top_k, ward=ward, max_price=max_price
-        )
-
+        results = self._search_similar_places(query=query, top_k=top_k, ward=ward, max_price=max_price)
         places = [r['place'] for r in results]
-
         if not places:
             raise ValueError('Không tìm thấy địa điểm phù hợp để lập lịch trình')
+        ctx = '\n'.join(f'place_id={p.id} | {p.name} ({p.ward}) - {p.description or ""}' for p in places)
+        prompt = (f'Yêu cầu: {query}\nSố ngày: {duration_day}\n\n'
+                  f'DANH SÁCH ĐỊA ĐIỂM (chỉ dùng place_id này): \n{ctx}')
+        return prompt, {p.id for p in places}
 
-        valid_ids = {p.id for p in places}
+    def complete_itinerary(self, prompt: str) -> str:
+        return self.chat_completion(sys_prompt=_ITINERARY_SYSTEM_PROMPT, user_prompt=prompt)
 
-        context = '\n'.join(
-            f'place_id={p.id} | {p.name} ({p.ward}) - {(p.description or '')}' for p in places
-        )
-
-        user_prompt = (
-            f'Yêu cầu: {query}\nSố ngày: {duration_day}\n\n'
-            f'DANH SÁCH ĐỊA ĐIỂM (chỉ dùng place_id này): \n{context}'
-        )
-
-        plan = self.parse_json(self.chat_completion(sys_prompt=_ITINERARY_SYSTEM_PROMPT, user_prompt=user_prompt))
+    def build_itinerary(self, raw: str, valid_ids: set[int], query: str, num_people: int | None=None) -> ItineraryCreate:
+        plan = self.parse_json(raw)
         if not isinstance(plan, dict):
             raise ValueError('AI trả về định dạng không hợp lệ')
 
@@ -301,3 +276,4 @@ class RagService:
             num_people=num_people,
             items=items
         )
+

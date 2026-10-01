@@ -59,7 +59,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       lastDate: now,
       initialDate: _dob,
     );
-    if (picked != null) setState(() => _dob = picked);
+    if (picked == null || !mounted) return;
+    setState(() => _dob = picked);
   }
 
   Future<void> _submit() async {

@@ -1,3 +1,4 @@
+import logging
 from typing import Generator, Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import decode_access_token
 from app.db.session import SessionLocal
+from app.db.uow import UnitOfWork
 from app.models import User
 from app.models.enums import UserRole
 from app.repository.category_repository import CategoryRepository
@@ -37,13 +39,16 @@ from app.service.upload_image_service import UploadImageService
 from app.service.user_service import UserService
 from app.service.visited_place_service import VisitedPlaceService
 
+logger = logging.getLogger(__name__)
 
 def get_db() -> Generator:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    with SessionLocal() as session:
+        try:
+            yield session
+        finally:
+            if session.info.get('pending_writes') or session.new or session.dirty or session.deleted:
+                logger.error('Request kết thúc với dữ liệu đã flush nhưng chưa commit: '
+                                 'có service ghi DB mà quên bọc `with uow.transaction()`')
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='auth/login')
@@ -122,69 +127,75 @@ UserRepoDep = Annotated[UserRepository, Depends(get_user_repository)]
 ChatRepoDep = Annotated[ChatRepository, Depends(get_chat_repository)]
 
 
-def get_rag_service(repo: PlaceEmbeddingRepoDep) -> RagService:
-    return RagService(repo)
+def get_uow(db: DbSessionDep) -> UnitOfWork:
+    return UnitOfWork(db)
+
+
+UowDep = Annotated[UnitOfWork, Depends(get_uow)]
+
+
+def get_rag_service(repo: PlaceEmbeddingRepoDep, uow: UowDep) -> RagService:
+    return RagService(repo, uow)
 
 
 RagServiceDep = Annotated[RagService, Depends(get_rag_service)]
 
 
-def get_category_service(repo: CateRepoDep) -> CategoryService:
-    return CategoryService(repo)
+def get_category_service(repo: CateRepoDep, uow: UowDep) -> CategoryService:
+    return CategoryService(repo, uow)
 
 
-def get_interest_tag_service(repo: InterestTagRepoDep) -> InterestTagService:
-    return InterestTagService(repo)
+def get_interest_tag_service(repo: InterestTagRepoDep, uow: UowDep) -> InterestTagService:
+    return InterestTagService(repo, uow)
 
 
+def get_favorite_service(repo: FavoriteRepositoryDep, place_repo: PlaceRepoDep, uow: UowDep) -> FavoriteService:
+    return FavoriteService(repo, place_repo, uow)
 
 
-
-def get_favorite_service(repo: FavoriteRepositoryDep, place_repo: PlaceRepoDep) -> FavoriteService:
-    return FavoriteService(repo, place_repo)
-
-
-def get_visited_place_service(repo: VisitedPlaceRepositoryDep, place_repo: PlaceRepoDep) -> VisitedPlaceService:
-    return VisitedPlaceService(repo, place_repo)
+def get_visited_place_service(repo: VisitedPlaceRepositoryDep, place_repo: PlaceRepoDep, uow: UowDep) -> VisitedPlaceService:
+    return VisitedPlaceService(repo, place_repo, uow)
 
 
-def get_stat_service(repo: StatRepoDep, search_log_repo: SearchLogRepoDep) -> StatService:
-    return StatService(repo, search_log_repo)
+def get_stat_service(repo: StatRepoDep, search_log_repo: SearchLogRepoDep, uow: UowDep) -> StatService:
+    return StatService(repo, search_log_repo, uow)
 
 
 StatServiceDep = Annotated[StatService, Depends(get_stat_service)]
 
 
-def get_upload_service(place_repo: PlaceRepoDep, user_repo: UserRepoDep) -> UploadImageService:
-    return UploadImageService(place_repo, user_repo)
+def get_upload_service() -> UploadImageService:
+    return UploadImageService()
 
 
 UploadImageServiceDep = Annotated[UploadImageService, Depends(get_upload_service)]
 
 
 def get_place_service(repo: PlaceRepoDep, stat_service: StatServiceDep, rag_service: RagServiceDep,
-                      upload_service: UploadImageServiceDep) -> PlaceService:
-    return PlaceService(repo, stat_service, rag_service, upload_service)
+                      upload_service: UploadImageServiceDep, uow: UowDep) -> PlaceService:
+    return PlaceService(repo, stat_service, rag_service, upload_service, uow)
 
 
 def get_itinerary_service(repo: ItineraryRepoDep, trip_repo: TripRequestRepoDep,
-                          rag_service: RagServiceDep) -> ItineraryService:
-    return ItineraryService(repo, trip_repo, rag_service)
+                          rag_service: RagServiceDep, uow: UowDep) -> ItineraryService:
+    return ItineraryService(repo, trip_repo, rag_service, uow)
 
 
-def get_auth_service(user_repo: UserRepoDep, token_black_list_repo: TokenBlackListRepoDep) -> AuthService:
-    return AuthService(user_repo, token_black_list_repo)
+def get_auth_service(user_repo: UserRepoDep, token_black_list_repo: TokenBlackListRepoDep, uow: UowDep) -> AuthService:
+    return AuthService(user_repo, token_black_list_repo, uow)
 
 
-def get_user_service(repo: UserRepoDep, upload_service: UploadImageServiceDep) -> UserService:
-    return UserService(repo, upload_service)
+def get_user_service(repo: UserRepoDep, upload_service: UploadImageServiceDep, uow: UowDep) -> UserService:
+    return UserService(repo, upload_service, uow)
 
 
-def get_chat_service(repo: ChatRepoDep, user_repo: UserRepoDep, rag_service: RagServiceDep) -> ChatService:
-    return ChatService(repo, user_repo, rag_service)
+def get_chat_service(repo: ChatRepoDep, user_repo: UserRepoDep, rag_service: RagServiceDep, uow: UowDep) -> ChatService:
+    return ChatService(repo, user_repo, rag_service, uow)
 
-def get_review_service(repo: ReviewRepoDep, place_repo: PlaceRepoDep, upload_service: UploadImageServiceDep) -> ReviewService:
-    return ReviewService(repo, place_repo, upload_service)
+
+def get_review_service(repo: ReviewRepoDep, place_repo: PlaceRepoDep,
+                       upload_service: UploadImageServiceDep, uow: UowDep) -> ReviewService:
+    return ReviewService(repo, place_repo, upload_service, uow)
 
 
 CateServiceDep = Annotated[CategoryService, Depends(get_category_service)]

@@ -10,8 +10,27 @@ class FavoritesProvider extends ChangeNotifier {
   bool loading = false;
   bool _loaded = false;
   String? error;
+
+  /// Tăng mỗi lần reset(). Request đang bay dở được chụp lại giá trị này lúc
+  /// bắt đầu; khi trả về mà số đã khác nghĩa là dữ liệu thuộc về tài khoản cũ
+  /// nên phải bỏ đi thay vì ghi đè.
+  int _generation = 0;
+
   List<PlaceDetail> get places => List.unmodifiable(_places);
   bool isFavorite(int placeId) => _places.any((p) => p.id == placeId);
+
+  /// Xoá sạch dữ liệu của tài khoản vừa đăng xuất. Provider này được tạo trên
+  /// RootScreen nên không bị dispose khi chuyển về LoginScreen — không gọi
+  /// reset() thì tài khoản đăng nhập kế tiếp sẽ thấy danh sách của tài khoản
+  /// trước (ensureLoaded() bỏ qua vì _loaded vẫn đang là true).
+  void reset() {
+    _generation++;
+    _places = [];
+    _loaded = false;
+    loading = false;
+    error = null;
+    notifyListeners();
+  }
 
   /// Gọi khi 1 màn hình cần biết trạng thái yêu thích nhưng không phải màn
   /// "sở hữu" dữ liệu này (VD: PlaceDetailScreen) — chỉ tải nếu chưa từng tải.
@@ -21,6 +40,7 @@ class FavoritesProvider extends ChangeNotifier {
   }
 
   Future<void> load() async {
+    final gen = _generation;
     loading = true;
     error = null;
     notifyListeners();
@@ -33,17 +53,22 @@ class FavoritesProvider extends ChangeNotifier {
             ),
           )
           .toList();
+      if (gen != _generation) return;
       _places = items;
       _loaded = true;
     } catch (e) {
+      if (gen != _generation) return;
       error = getErrorMessage(e);
     } finally {
-      loading = false;
-      notifyListeners();
+      if (gen == _generation) {
+        loading = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<void> toggle(int placeId) async {
+    final gen = _generation;
     final wasFavorite = isFavorite(placeId);
     final removed = wasFavorite
         ? _places.firstWhere((p) => p.id == placeId)
@@ -72,13 +97,13 @@ class FavoritesProvider extends ChangeNotifier {
       if (wasFavorite && status == 404) {
         return;
       }
-      if (wasFavorite && removed != null) {
+      if (gen == _generation && wasFavorite && removed != null) {
         _places.add(removed);
         notifyListeners();
       }
       rethrow;
     } catch (e) {
-      if (wasFavorite && removed != null) {
+      if (gen == _generation && wasFavorite && removed != null) {
         _places.add(removed);
         notifyListeners();
       }

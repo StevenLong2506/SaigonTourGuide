@@ -55,7 +55,9 @@ export default function NewPlacePage() {
         ]).then(([catRes, tagRes]) => {
             setCates(catRes.data);
             setTags(tagRes.data);
-        })
+        }).catch((e) => {
+            message.error(getErrorMessage(e));
+        });
     }, []);
 
     const onFinish = async (values: PlaceFormValues) => {
@@ -66,7 +68,7 @@ export default function NewPlacePage() {
             address: values.address,
             ward: values.ward,
             link_google_map: values.link_google_map,
-            phone: values.phone ?? '',
+            phone: values.phone || null,
             website: values.website,
             open_days: values.open_days,
             price_min: String(values.price_min ?? 0),

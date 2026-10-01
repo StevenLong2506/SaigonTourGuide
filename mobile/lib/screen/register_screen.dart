@@ -46,9 +46,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       initialDate: DateTime(now.year - 20, now.month, now.day),
     );
 
-    if (picked != null) {
-      setState(() => _dob = picked);
-    }
+    if (picked == null || !mounted) return;
+    setState(() => _dob = picked);
   }
 
   Future<void> _submit() async {

@@ -25,7 +25,7 @@ export default function ReviewsPage() {
     const loadReviews = async (status?: ReviewStatus) => {
         setLoading(true);
         try {
-            const { data } = await api.get<ReviewResponse[]>('/admin/reviews', {
+            const { data } = await api.get<ReviewResponse[]>('/admin/reviews/', {
                 params: { limit: 100, review_status: status }
             });
             setReviews(data);
@@ -37,22 +37,25 @@ export default function ReviewsPage() {
             setLoading(false);
         }
     }
+    const loadLookups = async () => {
+        const [placeRes, userRes] = await Promise.allSettled([
+            api.get<PlaceSummaryResponse[]>('/places/admin/all', { params: { limit: 100 } }),
+            api.get<UserResponse[]>('/admin/users/', { params: { limit: 200 } })
+        ]);
 
+        if (placeRes.status === 'fulfilled')
+            setPlaceMap(new Map(placeRes.value.data.map((p) => [p.id, p.name])));
+        else
+            message.error(getErrorMessage(placeRes.reason));
+
+        if (userRes.status === 'fulfilled')
+            setUserMap(new Map(userRes.value.data.map((u) => [u.id, `${u.name} (${u.username})`])));
+        else
+            message.error(getErrorMessage(userRes.reason));
+    }
     useEffect(() => {
-        loadReviews();
-
-        api.get<PlaceSummaryResponse[]>('/places/admin/all', { params: { limit: 100 } })
-            .then(({ data }) => {
-                setPlaceMap(new Map(data.map((p) => [p.id, p.name])));
-            });
-
-        api.get<UserResponse[]>('/admin/users/', { params: { limit: 200 } })
-            .then(({ data }) => {
-                setUserMap(
-                    new Map(data.map((u) => [u.id, `${u.name} (${u.username})`]))
-                );
-            })
-
+        void loadReviews();
+        void loadLookups();
     }, []);
 
     const handleFilterChange = (status: ReviewStatus | undefined) => {
@@ -100,7 +103,7 @@ export default function ReviewsPage() {
             title: 'Sao',
             dataIndex: 'rating',
             key: 'rating',
-            render: (v: number) => <Rate disabled defaultValue={v} style={{ fontSize: 14 }} />
+            render: (v: number) => <Rate disabled value={v} style={{ fontSize: 14 }} />
         },
         {
             title: 'Tiêu đề',

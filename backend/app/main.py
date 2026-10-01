@@ -1,3 +1,6 @@
+from sqlalchemy.exc import IntegrityError, DataError
+from starlette.responses import JSONResponse
+
 from app.api.endpoints import users, categories, auth, interest_tags, places, reviews, chat, favorite, visited_place, \
     itinerary
 from app import app
@@ -31,3 +34,12 @@ def health():
 @app.get('/')
 def root():
     return {'message': 'Hello world'}
+
+@app.exception_handler(IntegrityError)
+def integrity_error_handler(request, exc):
+    return JSONResponse(status_code=409, content={'detail': 'Dữ liệu bị trùng hoặc vi phạm ràng buộc'})
+
+@app.exception_handler(DataError)
+def data_error_handler(request, exc):
+    return JSONResponse(status_code=422, content={'detail': 'Dữ liệu không hợp lệ'})
+

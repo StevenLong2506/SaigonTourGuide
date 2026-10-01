@@ -1,9 +1,10 @@
 from fastapi import HTTPException, UploadFile, status
 
+from app.db.uow import UnitOfWork
 from app.service.helpers import get_place_or_404
 from app.models.enums import PlaceSortBy, PlaceStatus
 from app.repository.place_repository import PlaceRepository
-from app.schemas.place import PlaceCreate, PlaceUpdate, PlaceStatusUpdate, PlaceFeaturedUpdate
+from app.schemas.place import PlaceCreate, PlaceUpdate, PlaceStatusUpdate, PlaceFeaturedUpdate, PlaceImageCreate
 from app.service.rag_service import RagService
 from app.service.upload_image_service import UploadImageService
 from app.service.stat_service import StatService
@@ -11,11 +12,12 @@ from app.service.stat_service import StatService
 
 class PlaceService:
     def __init__(self, repo: PlaceRepository, stat_service: StatService, rag_service: RagService,
-                 upload_service: UploadImageService):
+                 upload_service: UploadImageService, uow: UnitOfWork):
         self.repo = repo
         self.stat_service = stat_service
         self.rag_service = rag_service
         self.upload_service = upload_service
+        self.uow = uow
 
     def search(self, *, q, category_ids, tag_ids, ward, price_min, price_max, min_rating,
                age_group, min_suitability, is_featured, sort_by: PlaceSortBy, skip, limit):
@@ -56,13 +58,15 @@ class PlaceService:
         place = get_place_or_404(self.repo, place_id)
         if place.status != PlaceStatus.ACTIVE:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Địa điểm không tồn tại')
-        self.repo.increment_view(place)
+        with self.uow.transaction():
+            self.repo.increment_view(place)
         return self.repo.to_response_data(place)
 
     # ---- Admin ----
     def admin_list(self, *, skip: int, limit: int, place_status: PlaceStatus | None, ward: str | None,
-                   category_id: int | None = None):
-        places = self.repo.list_full(skip=skip, limit=limit, status=place_status, ward=ward, category_id=category_id)
+                   category_id: int | None = None, keyword: str | None = None):
+        places = self.repo.list_full(skip=skip, limit=limit, status=place_status, ward=ward, category_id=category_id,
+                                     keyword=keyword)
         return [self.repo.to_summary_data(p) for p in places]
 
     def admin_get(self, place_id: int):
@@ -72,14 +76,11 @@ class PlaceService:
         if self.repo.get_by_name(payload.name):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Tên địa điểm đã tồn tại')
         try:
-            place = self.repo.create_place(payload, created_by=created_by)
+            with self.uow.transaction():
+                place = self.repo.create_place(payload, created_by=created_by)
+                self.rag_service.index_place(place=place)
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-        try:
-            self.rag_service.index_place(place=place)
-        except Exception:
-            pass
 
         return self.repo.to_response_data(place)
 
@@ -88,36 +89,46 @@ class PlaceService:
         if payload.name and payload.name != place.name and self.repo.get_by_name(payload.name):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Tên địa điểm đã tồn tại')
         try:
-            updated = self.repo.update_place(place, payload)
+            with self.uow.transaction():
+                updated = self.repo.update_place(place, payload)
+                self.rag_service.index_place(place=updated)
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-        try:
-            self.rag_service.index_place(place=updated)
-        except Exception:
-            pass
 
         return self.repo.to_response_data(updated)
 
     def delete(self, place_id: int):
         place = get_place_or_404(self.repo, place_id)
-        self.repo.delete(place)
+        with self.uow.transaction():
+            self.repo.delete(place)
 
     def set_status(self, place_id: int, payload: PlaceStatusUpdate):
         place = get_place_or_404(self.repo, place_id)
         if place.status == payload.status:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Trùng status')
-        return self.repo.to_response_data(self.repo.set_status(place, payload.status))
+        with self.uow.transaction():
+            place = self.repo.set_status(place, payload.status)
+        return self.repo.to_response_data(place=place)
 
     def set_featured(self, place_id: int, payload: PlaceFeaturedUpdate):
         place = get_place_or_404(self.repo, place_id)
-        return self.repo.to_response_data(self.repo.set_featured(place, payload.is_featured))
+        with self.uow.transaction():
+            place = self.repo.set_featured(place, payload.is_featured)
+        return self.repo.to_response_data(place=place)
 
     def add_images(self, place_id: int, files: list[UploadFile]):
         if not files:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Danh sách ảnh trống')
         place = get_place_or_404(self.repo, place_id)
-        place = self.upload_service.upload_place_images(place=place, files=files)
+
+        self.uow.end_read()
+        uploaded = self.upload_service.upload_place_images(files=files, place_id=place_id)
+        try:
+            with self.uow.transaction():
+                place = self.repo.add_images(place=place, images=[PlaceImageCreate(img_url=url) for url, _ in uploaded])
+        except Exception:
+            self.upload_service.delete_images([pid for _, pid in uploaded])
+            raise
         return self.repo.to_response_data(place)
 
     def set_primary_image(self, place_id: int, image_id: int):
@@ -125,14 +136,18 @@ class PlaceService:
         img = self.repo.get_image(place_id=place_id, img_id=image_id)
         if img is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Ảnh không tồn tại')
-        return self.repo.to_response_data(self.repo.set_primary_image(place, img))
+        with self.uow.transaction():
+            place = self.repo.set_primary_image(place, img)
+        return self.repo.to_response_data(place=place)
 
     def delete_image(self, place_id: int, image_id: int):
         place = get_place_or_404(self.repo, place_id)
         img = self.repo.get_image(place_id, image_id)
         if img is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Ảnh không tồn tại')
-        return self.repo.to_response_data(self.repo.delete_image(place, img))
+        with self.uow.transaction():
+            place = self.repo.delete_image(place, img)
+        return self.repo.to_response_data(place=place)
 
     def reindex_all(self):
         total = self.rag_service.reindex_all_places()

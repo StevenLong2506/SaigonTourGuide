@@ -2,7 +2,7 @@
 
 import api, { getErrorMessage } from "@/lib/api";
 import { KeywordStatResponse, OverviewResponse, TopPlaceOrderBy, TopPlaceResponse } from "@/types/stat";
-import { Card, Col, InputNumber, message, Row, Select, Spin, Statistic, Typography } from "antd";
+import { Card, Col, InputNumber, message, Row, Select, Spin, Statistic } from "antd";
 import Table, { ColumnsType } from "antd/es/table";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
